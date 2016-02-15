@@ -2,6 +2,7 @@ tags
 **/*.swp
 **/*.swo
 .swp
+*.swp
 .swo
 -.d
 eastl_build_out
@@ -25,3 +26,4 @@ Release/*
 Win32/*
 x64/*
 MinSizeRel/*
+build/*
