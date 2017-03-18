@@ -8,6 +8,7 @@
 #include "TestSet.h"
 #include <EASTL/fixed_hash_set.h>
 #include <EASTL/fixed_hash_map.h>
+#include <EASTL/fixed_vector.h>
 #include <EABase/eabase.h>
 
 
@@ -210,6 +211,26 @@ int TestFixedHash()
 			// This is a weak test which should be improved.
 			EASTLAllocatorType a = fixedHashMap.get_allocator().get_overflow_allocator();
 			fixedHashMap.get_allocator().set_overflow_allocator(a);
+		}
+		
+		{
+			// Test fixed_hash_map *with* overflow and ensure the underlying hashtable rehashes.
+			typedef eastl::fixed_hash_map<unsigned int, unsigned int, 512, 513, true,  eastl::hash<unsigned int>, eastl::equal_to<unsigned int>, false, MallocAllocator> FixedHashMap;
+
+			FixedHashMap fixedHashMap;
+			auto old_bucket_count = fixedHashMap.bucket_count();
+			auto old_load_factor = fixedHashMap.load_factor();
+						
+			for (int i = 0; i < 1000; i++)
+				fixedHashMap.insert(i);
+
+			auto new_bucket_count = fixedHashMap.bucket_count();
+			auto new_load_factor = fixedHashMap.load_factor();
+
+			VERIFY(new_bucket_count != old_bucket_count);
+			VERIFY(new_bucket_count > old_bucket_count);
+			VERIFY(new_load_factor != old_load_factor);
+			VERIFY(fixedHashMap.get_overflow_allocator().mAllocCountAll != 0);			
 		}
 
 		{
@@ -539,6 +560,22 @@ int TestFixedHash()
 		nErrorCount += TestMultisetCpp11<eastl::fixed_hash_multiset<TestObject, 32, 7, true> >();
 	}
 
+	{
+		// void reserve(size_type nElementCount);
+
+		// test with overflow enabled.
+		nErrorCount += HashContainerReserveTest<fixed_hash_set<int, 16>>()();
+		nErrorCount += HashContainerReserveTest<fixed_hash_multiset<int, 16>>()();
+		nErrorCount += HashContainerReserveTest<fixed_hash_map<int, int, 16>>()();
+		nErrorCount += HashContainerReserveTest<fixed_hash_multimap<int, int, 16>>()();
+
+		// API prevents testing fixed size hash container reservation without overflow enabled. 
+		//
+		// nErrorCount += HashContainerReserveTest<fixed_hash_set<int, 400, 401, false>>()();
+		// nErrorCount += HashContainerReserveTest<fixed_hash_multiset<int, 400, 401, false>>()();
+		// nErrorCount += HashContainerReserveTest<fixed_hash_map<int, int, 400, 401, false>>()();
+		// nErrorCount += HashContainerReserveTest<fixed_hash_multimap<int, int, 9000, 9001, false>>()();
+	}
 
 	{
 		// initializer_list support.

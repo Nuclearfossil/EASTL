@@ -12,9 +12,9 @@ namespace eastl
 	class allocator;
 
 	template <typename T, typename Allocator> class basic_string;
-	typedef basic_string<char, allocator> string8;
+	typedef basic_string<char, allocator> local_string8;  // collides with eastl::string8 in bulkbuilds
 
-	static void UseForwardDeclaredString(string8*)
+	static void UseForwardDeclaredString(local_string8*)
 	{
 	}
 
@@ -67,6 +67,7 @@ namespace eastl
 #include <EASTL/core_allocator_adapter.h>
 #include <EASTL/bonus/call_traits.h>
 #include <EASTL/bonus/compressed_pair.h>
+#include <EASTL/bonus/adaptors.h>
 #include <EAStdC/EAAlignment.h>
 #include <EAStdC/EAMemory.h>
 #include <EAStdC/EAString.h>
@@ -161,7 +162,7 @@ static int TestForwardDeclarations()
 {
 	int nErrorCount = 0;
 
-	eastl::string8 s8;
+	eastl::local_string8 s8;
 	UseForwardDeclaredString(&s8);   
 
 	eastl::vector8 v8;
@@ -908,6 +909,30 @@ static int TestNumeric()
 
 
 ///////////////////////////////////////////////////////////////////////////////
+// TestAdaptors
+//
+static int TestAdaptors()
+{
+	int nErrorCount = 0;
+
+	{
+		int int_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+		eastl::vector<int> original(begin(int_data), end(int_data));
+
+		eastl::vector<int> reversed;
+		for(auto& e : eastl::reverse(original))
+			reversed.push_back(e);
+
+		eastl::reverse(begin(original), end(original));
+		EATEST_VERIFY(reversed == original);
+	}
+
+	return nErrorCount;
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////
 // TestExtra
 //
 int TestExtra()
@@ -921,6 +946,7 @@ int TestExtra()
 	nErrorCount += TestCompressedPair();
 	nErrorCount += TestCallTraits();
 	nErrorCount += TestNumeric();
+	nErrorCount += TestAdaptors();
 
 	return nErrorCount;
 }

@@ -499,9 +499,18 @@ namespace eastl
 				EASTL_FAIL_MSG("vector::DoAllocate -- improbably large request.");
 		#endif
 
-		// If n is zero, then we allocate no memory and just return NULL. 
+		// If n is zero, then we allocate no memory and just return nullptr. 
 		// This is fine, as our default ctor initializes with NULL pointers. 
-		return n ? (T*)allocate_memory(mAllocator, n * sizeof(T), EASTL_ALIGN_OF(T), 0) : NULL;
+		if(EASTL_LIKELY(n))
+		{
+			auto* p = (T*)allocate_memory(mAllocator, n * sizeof(T), EASTL_ALIGN_OF(T), 0);
+			EASTL_ASSERT_MSG(p != nullptr, "the behaviour of eastl::allocators that return nullptr is not defined.");
+			return p;
+		}
+		else
+		{
+			return nullptr;
+		}
 	}
 
 
@@ -581,7 +590,7 @@ namespace eastl
 	#if EASTL_MOVE_SEMANTICS_ENABLED
 		template <typename T, typename Allocator>
 		inline vector<T, Allocator>::vector(this_type&& x)
-			: base_type(x.mAllocator)
+			: base_type(eastl::move(x.mAllocator))  // vector requires move-construction of allocator in this case.
 		{
 			DoSwap(x);
 		}
@@ -591,7 +600,13 @@ namespace eastl
 		inline vector<T, Allocator>::vector(this_type&& x, const allocator_type& allocator)
 			: base_type(allocator)
 		{
-			swap(x); // member swap handles the case that x has a different allocator than our allocator by doing a copy.
+			if (mAllocator == x.mAllocator) // If allocators are equivalent...
+				DoSwap(x);
+			else 
+			{
+				this_type temp(eastl::move(*this)); // move construct so we don't require the use of copy-ctors that prevent the use of move-only types.
+				temp.swap(x);
+			}
 		}
 	#endif
 
@@ -875,8 +890,7 @@ namespace eastl
 			else if(n < (size_type)(mpEnd - mpBegin))
 				resize(n);
 
-			this_type temp(*this);  // This is the simplest way to accomplish this, 
-			swap(temp);             // and it is as efficient as any other.
+			shrink_to_fit();
 		}
 		else // Else new capacity > size.
 		{
@@ -958,8 +972,8 @@ namespace eastl
 	inline typename vector<T, Allocator>::reference
 	vector<T, Allocator>::at(size_type n)
 	{
-		// The difference between at and operator[] is that at signals 
-		// if the requested position is out of range by throwing an 
+		// The difference between at() and operator[] is it signals 
+		// the requested position is out of range by throwing an 
 		// out_of_range exception.
 
 		#if EASTL_EXCEPTIONS_ENABLED
@@ -1372,10 +1386,10 @@ namespace eastl
 	// allocator_traits<allocator_type>::propagate_on_container_swap::value is true (propagate_on_container_swap
 	// is false by default). EASTL doesn't have allocator_traits and so this doesn't directly apply,
 	// but EASTL has the effective behavior of propagate_on_container_swap = false for all allocators. 
-	// So EASTL swap exchanges contents but not allocators, and swap is more efficient if allocators are equivalent.
 	template <typename T, typename Allocator>
 	inline void vector<T, Allocator>::swap(this_type& x)
 	{
+	#if EASTL_VECTOR_LEGACY_SWAP_BEHAVIOUR_REQUIRES_COPY_CTOR
 		if(mAllocator == x.mAllocator) // If allocators are equivalent...
 			DoSwap(x);
 		else // else swap the contents.
@@ -1384,6 +1398,27 @@ namespace eastl
 			*this = x;                   // itself call this member swap function.
 			x     = temp;
 		}
+	#else
+		// NOTE(rparolin): The previous implementation required T to be copy-constructible in the fall-back case where
+		// allocators with unique instances copied elements.  This was an unnecessary restriction and prevented the common
+		// usage of vector with non-copyable types (eg. eastl::vector<non_copyable> or eastl::vector<unique_ptr>). 
+		// 
+		// The previous implementation violated the following requirements of vector::swap so the fall-back code has
+		// been removed.  EASTL implicitly defines 'propagate_on_container_swap = false' therefore the fall-back case is
+		// undefined behaviour.  We simply swap the contents and the allocator as that is the common expectation of
+		// users and does not put the container into an invalid state since it can not free its memory via its current
+		// allocator instance.
+		//
+		// http://en.cppreference.com/w/cpp/container/vector/swap
+		// "Exchanges the contents of the container with those of other. Does not invoke any move, copy, or swap
+		// operations on individual elements."
+		//
+	    // http://en.cppreference.com/w/cpp/concept/AllocatorAwareContainer
+	    // "Swapping two containers with unequal allocators if propagate_on_container_swap is false is undefined
+	    // behavior."
+
+		DoSwap(x);
+	#endif
 	}
 
 
@@ -1436,7 +1471,7 @@ namespace eastl
 	inline void vector<T, Allocator>::DoInitFromIterator(InputIterator first, InputIterator last, EASTL_ITC_NS::input_iterator_tag)
 	{
 		// To do: Use emplace_back instead of push_back(). Our emplace_back will work below without any ifdefs.
-		for(; first < last; ++first)  // InputIterators by definition actually only allow you to iterate through them once.
+		for(; first != last; ++first)  // InputIterators by definition actually only allow you to iterate through them once.
 			push_back(*first);        // Thus the standard *requires* that we do this (inefficient) implementation.
 	}                                 // Luckily, InputIterators are in practice almost never used, so this code will likely never get executed.
 
@@ -1592,8 +1627,8 @@ namespace eastl
 
 				if(n < nExtra) // If the inserted values are entirely within initialized memory (i.e. are before mpEnd)...
 				{
-					eastl::uninitialized_copy_ptr(mpEnd - n, mpEnd, mpEnd);
-					eastl::copy_backward(destPosition, mpEnd - n, mpEnd); // We need copy_backward because of potential overlap issues.
+					eastl::uninitialized_move_ptr(mpEnd - n, mpEnd, mpEnd);
+					eastl::move_backward(destPosition, mpEnd - n, mpEnd); // We need move_backward because of potential overlap issues.
 					eastl::copy(first, last, destPosition);
 				}
 				else
@@ -1601,7 +1636,7 @@ namespace eastl
 					BidirectionalIterator iTemp = first;
 					eastl::advance(iTemp, nExtra);
 					eastl::uninitialized_copy_ptr(iTemp, last, mpEnd);
-					eastl::uninitialized_copy_ptr(destPosition, mpEnd, mpEnd + n - nExtra);
+					eastl::uninitialized_move_ptr(destPosition, mpEnd, mpEnd + n - nExtra);
 					eastl::copy_backward(first, iTemp, destPosition + nExtra);
 				}
 
@@ -1666,14 +1701,14 @@ namespace eastl
 
 				if(n < nExtra)
 				{
-					eastl::uninitialized_copy_ptr(mpEnd - n, mpEnd, mpEnd);
-					eastl::copy_backward(destPosition, mpEnd - n, mpEnd); // We need copy_backward because of potential overlap issues.
+					eastl::uninitialized_move_ptr(mpEnd - n, mpEnd, mpEnd);
+					eastl::move_backward(destPosition, mpEnd - n, mpEnd); // We need move_backward because of potential overlap issues.
 					eastl::fill(destPosition, destPosition + n, temp);
 				}
 				else
 				{
 					eastl::uninitialized_fill_n_ptr(mpEnd, n - nExtra, temp);
-					eastl::uninitialized_copy_ptr(destPosition, mpEnd, mpEnd + n - nExtra);
+					eastl::uninitialized_move_ptr(destPosition, mpEnd, mpEnd + n - nExtra);
 					eastl::fill(destPosition, mpEnd, temp);
 				}
 
@@ -1721,7 +1756,7 @@ namespace eastl
 	void vector<T, Allocator>::DoClearCapacity() // This function exists because set_capacity() currently indirectly requires value_type to be default-constructible, 
 	{                                            // and some functions that need to clear our capacity (e.g. operator=) aren't supposed to require default-constructibility. 
 		clear();
-		this_type temp(*this);  // This is the simplest way to accomplish this, 
+		this_type temp(eastl::move(*this));  // This is the simplest way to accomplish this, 
 		swap(temp);             // and it is as efficient as any other.
 	}
 

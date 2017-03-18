@@ -211,7 +211,7 @@
 
 // #include <sys/stat.h>
 #if !defined(EA_HAVE_SYS_STAT_H) && !defined(EA_NO_HAVE_SYS_STAT_H)
-	#if (defined(EA_PLATFORM_UNIX) && !(defined(CS_UNDEFINED_STRING) && defined(EA_PLATFORM_CONSOLE))) || defined(__APPLE__) || defined(EA_PLATFORM_ANDROID)
+	#if (defined(EA_PLATFORM_UNIX) && !(defined(EA_PLATFORM_SONY) && defined(EA_PLATFORM_CONSOLE))) || defined(__APPLE__) || defined(EA_PLATFORM_ANDROID)
 		#define EA_HAVE_SYS_STAT_H 1 /* declares the stat struct and function */
 	#else
 		#define EA_NO_HAVE_SYS_STAT_H 1
@@ -225,7 +225,7 @@
 
 // #include <signal.h>
 #if !defined(EA_HAVE_SIGNAL_H) && !defined(EA_NO_HAVE_SIGNAL_H)
-	#if !defined(EA_PLATFORM_BSD) && !defined(CS_UNDEFINED_STRING)
+	#if !defined(EA_PLATFORM_BSD) && !defined(EA_PLATFORM_SONY)
 		#define EA_HAVE_SIGNAL_H 1
 	#else
 		#define EA_NO_HAVE_SIGNAL_H 1
@@ -234,7 +234,7 @@
 
 // #include <sys/signal.h>
 #if !defined(EA_HAVE_SYS_SIGNAL_H) && !defined(EA_NO_HAVE_SYS_SIGNAL_H)
-	#if defined(EA_PLATFORM_BSD) || defined(CS_UNDEFINED_STRING)
+	#if defined(EA_PLATFORM_BSD) || defined(EA_PLATFORM_KETTLE)
 		#define EA_HAVE_SYS_SIGNAL_H 1
 	#else
 		#define EA_NO_HAVE_SYS_SIGNAL_H 1
@@ -252,7 +252,11 @@
 
 // #include <wchar.h>
 #if !defined(EA_HAVE_WCHAR_H) && !defined(EA_NO_HAVE_WCHAR_H)
+	#if defined(EA_PLATFORM_DESKTOP) && defined(EA_PLATFORM_UNIX) && defined(EA_PLATFORM_SONY) && defined(EA_PLATFORM_APPLE)
+		#define EA_HAVE_WCHAR_H 1
+	#else
 		#define EA_NO_HAVE_WCHAR_H 1
+	#endif
 #endif
 
 // #include <malloc.h>
@@ -266,7 +270,7 @@
 
 // #include <alloca.h>
 #if !defined(EA_HAVE_ALLOCA_H) && !defined(EA_NO_HAVE_ALLOCA_H)
-	#if !defined(EA_HAVE_MALLOC_H) && !defined(CS_UNDEFINED_STRING)
+	#if !defined(EA_HAVE_MALLOC_H) && !defined(EA_PLATFORM_KETTLE)
 		#define EA_HAVE_ALLOCA_H 1
 	#else
 		#define EA_NO_HAVE_ALLOCA_H 1
@@ -463,6 +467,8 @@
 		#define EA_HAVE_CPP11_INITIALIZER_LIST 1
 	#elif defined(EA_COMPILER_CPP11_ENABLED) && defined(EA_HAVE_LIBSTDCPP_LIBRARY) && defined(EA_COMPILER_CLANG) && (EA_COMPILER_VERSION >= 301) && !defined(EA_COMPILER_NO_INITIALIZER_LISTS) && !defined(EA_PLATFORM_APPLE)
 		#define EA_HAVE_CPP11_INITIALIZER_LIST 1
+	#elif defined(EA_COMPILER_CPP11_ENABLED) && defined(EA_HAVE_LIBCPP_LIBRARY) && defined(EA_COMPILER_CLANG) && (EA_COMPILER_VERSION >= 301) && !defined(EA_COMPILER_NO_INITIALIZER_LISTS) && !defined(EA_PLATFORM_APPLE)
+		#define EA_HAVE_CPP11_INITIALIZER_LIST 1
 	#elif defined(EA_COMPILER_CPP11_ENABLED) && defined(EA_HAVE_LIBSTDCPP_LIBRARY) && defined(EA_COMPILER_GNUC) && (EA_COMPILER_VERSION >= 4004) && !defined(EA_COMPILER_NO_INITIALIZER_LISTS) && !defined(EA_PLATFORM_APPLE)
 		#define EA_HAVE_CPP11_INITIALIZER_LIST 1
 	#elif defined(EA_HAVE_LIBCPP_LIBRARY) && (_LIBCPP_VERSION >= 1) && !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
@@ -559,10 +565,10 @@
 #endif
 
 #if !defined(EA_HAVE_ISNAN) && !defined(EA_NO_HAVE_ISNAN)
-	#if defined(EA_PLATFORM_MICROSOFT) && !defined(EA_COMPILER_CLANG)
+	#if defined(EA_PLATFORM_MICROSOFT) && !defined(EA_PLATFORM_MINGW)
 		#define EA_HAVE_ISNAN(x)  _isnan(x)          /* declared in <math.h> */
 		#define EA_HAVE_ISINF(x)  !_finite(x)
-	#elif defined(EA_PLATFORM_APPLE) || (defined(EA_PLATFORM_MICROSOFT) && defined(EA_COMPILER_CLANG))
+	#elif defined(EA_PLATFORM_APPLE)
 		#define EA_HAVE_ISNAN(x)  std::isnan(x)      /* declared in <cmath> */
 		#define EA_HAVE_ISINF(x)  std::isinf(x)
 	#elif defined(EA_PLATFORM_ANDROID)
@@ -571,7 +577,10 @@
 	#elif defined(__GNUC__) && defined(__CYGWIN__)
 		#define EA_HAVE_ISNAN(x)  __isnand(x)        /* declared nowhere, it seems. */
 		#define EA_HAVE_ISINF(x)  __isinfd(x)
-	#else /* Most GCC, EDG, and Dinkumware. */
+	#elif defined(EA_PLATFORM_MINGW)                 /* Meant to workaround a GCC limitation where cmath undefines isnan, both GCC and clang have std::isnan */
+		#define EA_HAVE_ISNAN(x)  std::isnan(x)      /* declared in <cmath> */
+		#define EA_HAVE_ISINF(x)  std::isinf(x)
+	#else /* Most GCC, EDG, Dinkumware. */
 		#define EA_HAVE_ISNAN(x)  isnan(x)           /* declared in <math.h> */
 		#define EA_HAVE_ISINF(x)  isinf(x)
 	#endif
@@ -586,7 +595,7 @@
 #endif
 
 #if !defined(EA_HAVE_nanosleep_DECL) && !defined(EA_NO_HAVE_nanosleep_DECL)
-	#if (defined(EA_PLATFORM_UNIX) && !defined(CS_UNDEFINED_STRING)) || defined(EA_PLATFORM_IPHONE) || defined(EA_PLATFORM_OSX) || defined(CS_UNDEFINED_STRING)
+	#if (defined(EA_PLATFORM_UNIX) && !defined(EA_PLATFORM_SONY)) || defined(EA_PLATFORM_IPHONE) || defined(EA_PLATFORM_OSX) || defined(EA_PLATFORM_KETTLE)
 		#define EA_HAVE_nanosleep_DECL 1
 	#else
 		#define EA_NO_HAVE_nanosleep_DECL 1
@@ -679,7 +688,7 @@
 
 // <arpa/inet.h> inet_ntop()
 #if !defined(EA_HAVE_inet_ntop_IMPL) && !defined(EA_NO_HAVE_inet_ntop_IMPL)
-	#if (defined(EA_PLATFORM_UNIX) || defined(EA_PLATFORM_POSIX)) && !defined(CS_UNDEFINED_STRING) 
+	#if (defined(EA_PLATFORM_UNIX) || defined(EA_PLATFORM_POSIX)) && !defined(EA_PLATFORM_SONY) 
 		#define EA_HAVE_inet_ntop_IMPL 1  /* This doesn't identify if the platform SDK has some alternative function that does the same thing; */
 		#define EA_HAVE_inet_pton_IMPL 1  /* it identifies strictly the <arpa/inet.h> inet_ntop and inet_pton functions. For example, Microsoft has InetNtop in <Ws2tcpip.h> */
 	#else

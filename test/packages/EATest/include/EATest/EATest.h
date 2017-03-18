@@ -109,6 +109,8 @@
 
             #if defined(EA_COMPILER_MSVC) && (_MSC_VER >= 1300)
                 #define EATEST_DEBUG_BREAK() __debugbreak() // This is a compiler intrinsic which will map to appropriate inlined asm for the platform.
+            #elif defined(EA_PLATFORM_SONY) && defined(EA_PROCESSOR_X86_64)
+                #define EATEST_DEBUG_BREAK() do { { __asm volatile ("int $0x41"); } } while(0)
             #elif defined(EA_PROCESSOR_ARM) && (defined(__APPLE__) || defined(CS_UNDEFINED_STRING))
                 #include <signal.h>
                 #include <unistd.h>
@@ -340,6 +342,25 @@ namespace EA
         #else
             #define EATEST_VERIFY_F(bExpression, pFormat, ...) EA::UnitTest::TestInternal::EATEST_VERIFY_F_IMP((bExpression), nErrorCount, __FILE__, __LINE__, pFormat, __VA_ARGS__)
         #endif
+
+				/// EATEST_VERIFY_THROW
+				/// EATEST_VERIFY_NOTHROW
+				/// 
+				/// This macro confirms whether or not an expression throws or doesn't throw. If it's not the case that EASTL_EXCEPTIONS_ENABLED
+				/// the provided expression will not be evaluated.
+				/// 
+				/// See EATEST_VERIFY for details about error reporting and the _MSG variants
+				#if EASTL_EXCEPTIONS_ENABLED
+					#define EATEST_VERIFY_THROW(expression) {bool isNoThrow; try{ {expression;} isNoThrow=true; }catch(...){isNoThrow=false;} EATEST_VERIFY(!isNoThrow); }
+					#define EATEST_VERIFY_NOTHROW(expression) {bool isNoThrow; try{ {expression;} isNoThrow=true; }catch(...){isNoThrow=false;} EATEST_VERIFY(isNoThrow); }
+					#define EATEST_VERIFY_THROW_MSG(expression, msg) {bool isNoThrow; try{ {expression;} isNoThrow=true; }catch(...){isNoThrow=false;} EATEST_VERIFY_MSG(!isNoThrow, msg); }
+					#define EATEST_VERIFY_NOTHROW_MSG(expression, msg) {bool isNoThrow; try{ {expression;} isNoThrow=true; }catch(...){isNoThrow=false;} EATEST_VERIFY_MSG(isNoThrow, msg); }
+				#else
+					#define EATEST_VERIFY_THROW(expression) 
+					#define EATEST_VERIFY_NOTHROW(expression) 
+					#define EATEST_VERIFY_THROW_MSG(expression, msg) 
+					#define EATEST_VERIFY_NOTHROW_MSG(expression, msg) 
+				#endif
 
 
         ///////////////////////////////////////////////////////////////////////

@@ -276,6 +276,19 @@ namespace eastl
 	typedef integral_constant<bool, false> false_type;
 
 
+	///////////////////////////////////////////////////////////////////////
+	// bool_constant 
+	//
+	// This is a convenience helper for the often used integral_constant<bool, value>.
+	//
+	#if defined(EA_COMPILER_NO_TEMPLATE_ALIASES)
+		template <bool B>
+		struct bool_constant : public integral_constant<bool, B> {};
+	#else
+		template <bool B>
+		using bool_constant = integral_constant<bool, B>;
+	#endif
+
 
 	///////////////////////////////////////////////////////////////////////
 	// yes_type / no_type
@@ -286,12 +299,6 @@ namespace eastl
 	struct       no_type { char padding[8]; };  // sizeof(no_type)  != 1
 
 
-	///////////////////////////////////////////////////////////////////////
-	// empty
-	//
-	template <typename T>
-	struct empty{ };
-
 
 	///////////////////////////////////////////////////////////////////////
 	// unused
@@ -299,7 +306,7 @@ namespace eastl
 	// Used internally to denote a special template argument that means 
 	// it's an unused argument.
 	//
-	struct unused{ };
+	struct unused { };
 
 
 	///////////////////////////////////////////////////////////////////////
@@ -307,7 +314,6 @@ namespace eastl
 	//
 	// Used as a type which constructs from anything. 
 	//
-
 	#if defined(EA_COMPILER_NO_VARIADIC_TEMPLATES) 
 		struct argument_sink{ argument_sink(...){} };
 	#else
@@ -451,6 +457,10 @@ namespace eastl
 	template <typename T, typename F>
 	struct conditional<false, T, F> { typedef F type; };
 
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		template <bool B, class T, class F>
+		using conditional_t = typename conditional<B, T, F>::type;
+	#endif
 
 	///////////////////////////////////////////////////////////////////////
 	// identity
@@ -488,9 +498,13 @@ namespace eastl
 	template <typename T>
 	struct is_same<T, T> : public eastl::true_type { };
 
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		template <class T, class U>
+		EA_CONSTEXPR bool is_same_v = is_same<T, U>::value;
+	#endif
 
 
-	///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
 	// is_const
 	//
 	// is_const<T>::value == true if and only if T has const-qualification.
@@ -615,13 +629,35 @@ namespace eastl
 		struct is_function
 			: public eastl::false_type {};
 
-		template <typename ReturnValue, typename... ArgPack>
-		struct is_function<ReturnValue /*FunctionName*/(ArgPack...)>
-			: public eastl::true_type {};
+		#if EA_PLATFORM_PTR_SIZE == 4 && defined(EA_PLATFORM_MICROSOFT) && defined(_MSC_EXTENSIONS)
+			// __cdecl specialization
+			template <typename ReturnValue, typename... ArgPack>
+			struct is_function<ReturnValue __cdecl (ArgPack...)>
+				: public eastl::true_type {};
 
-		template <typename ReturnValue, typename... ArgPack>
-		struct is_function<ReturnValue /*FunctionName*/(ArgPack..., ...)>    // The second ellipsis handles the case of a function that takes ellipsis, like printf.
-			: public eastl::true_type {};
+			template <typename ReturnValue, typename... ArgPack>
+			struct is_function<ReturnValue __cdecl (ArgPack..., ...)>    // The second ellipsis handles the case of a function that takes ellipsis, like printf.
+				: public eastl::true_type {};
+
+			// __stdcall specialization
+			template <typename ReturnValue, typename... ArgPack>
+			struct is_function<ReturnValue __stdcall (ArgPack...)>
+				: public eastl::true_type {};
+
+			// When functions use a variable number of arguments, it is the caller that cleans the stack (cf. cdecl).
+			//
+			// template <typename ReturnValue, typename... ArgPack>
+			// struct is_function<ReturnValue __stdcall (ArgPack..., ...)>    // The second ellipsis handles the case of a function that takes ellipsis, like printf.
+			//     : public eastl::true_type {};
+		#else 
+			template <typename ReturnValue, typename... ArgPack>
+			struct is_function<ReturnValue (ArgPack...)>
+				: public eastl::true_type {};
+
+			template <typename ReturnValue, typename... ArgPack>
+			struct is_function<ReturnValue (ArgPack..., ...)>    // The second ellipsis handles the case of a function that takes ellipsis, like printf.
+				: public eastl::true_type {};
+		#endif
 	#endif
 
 
@@ -740,6 +776,10 @@ namespace eastl
 		template <typename T> struct remove_reference<T&&>{ typedef T type; };
 	#endif
 
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		template<typename T>
+		using remove_reference_t = typename remove_reference<T>::type;
+	#endif
 
 
 	///////////////////////////////////////////////////////////////////////

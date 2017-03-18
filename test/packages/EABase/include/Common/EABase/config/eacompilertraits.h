@@ -8,6 +8,7 @@
  *    
  *    EA_COMPILER_IS_ANSIC
  *    EA_COMPILER_IS_C99
+ *    EA_COMPILER_IS_C11
  *    EA_COMPILER_HAS_C99_TYPES
  *    EA_COMPILER_IS_CPLUSPLUS
  *    EA_COMPILER_MANAGED_CPP
@@ -68,6 +69,12 @@
  *    EA_DISABLE_EDG_WARNING   / EA_RESTORE_EDG_WARNING
  *    EA_DISABLE_CW_WARNING    / EA_RESTORE_CW_WARNING
  *
+ *    EA_DISABLE_DEFAULT_CTOR
+ *    EA_DISABLE_COPY_CTOR
+ *    EA_DISABLE_MOVE_CTOR
+ *    EA_DISABLE_ASSIGNMENT_OPERATOR
+ *    EA_DISABLE_MOVE_OPERATOR
+ *
  *  Todo:
  *    Find a way to reliably detect wchar_t size at preprocessor time and 
  *    implement it below for EA_WCHAR_SIZE.
@@ -106,6 +113,15 @@
 		//
 		#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)
 			#define EA_COMPILER_IS_C99 1
+		#endif
+
+ 		// Is the compiler a C11 compiler?
+ 		// From ISO/IEC 9899:2011:
+		//   Page 176, 6.10.8.1 (Predefined macro names) :
+ 		//   __STDC_VERSION__ The integer constant 201112L. (178)
+		//
+		#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+			#define EA_COMPILER_IS_C11 1
 		#endif
 	#endif
 
@@ -1022,7 +1038,7 @@
 					#define EA_WCHAR_T_NON_NATIVE 1
 				#endif
 			#endif
-		#elif defined(EA_COMPILER_MSVC) || defined(EA_COMPILER_BORLAND)
+		#elif defined(EA_COMPILER_MSVC) || defined(EA_COMPILER_BORLAND) || (defined(EA_COMPILER_CLANG) && defined(EA_PLATFORM_WINDOWS))
 			#ifndef _NATIVE_WCHAR_T_DEFINED
 				#define EA_WCHAR_T_NON_NATIVE 1
 			#endif
@@ -1796,6 +1812,85 @@
 		#define EA_FUNCTION_DELETE = delete
 	#endif
 
+	// ------------------------------------------------------------------------
+	// EA_DISABLE_DEFAULT_CTOR
+	//
+	// Disables the compiler generated default constructor. This macro is
+	// provided to improve portability and clarify intent of code.
+	//
+	// Example usage:
+	//
+	//  class Example
+	//  {
+	//  private:
+	//      EA_DISABLE_DEFAULT_CTOR(Example);
+	//  };
+	//
+	#define EA_DISABLE_DEFAULT_CTOR(ClassName) ClassName() EA_FUNCTION_DELETE
+
+	// ------------------------------------------------------------------------
+	// EA_DISABLE_COPY_CTOR
+	//
+	// Disables the compiler generated copy constructor. This macro is
+	// provided to improve portability and clarify intent of code.
+	//
+	// Example usage:
+	//
+	//  class Example
+	//  {
+	//  private:
+	//      EA_DISABLE_COPY_CTOR(Example);
+	//  };
+	//
+	#define EA_DISABLE_COPY_CTOR(ClassName) ClassName(const ClassName &) EA_FUNCTION_DELETE
+
+	// ------------------------------------------------------------------------
+	// EA_DISABLE_MOVE_CTOR
+	//
+	// Disables the compiler generated move constructor. This macro is
+	// provided to improve portability and clarify intent of code.
+	//
+	// Example usage:
+	//
+	//  class Example
+	//  {
+	//  private:
+	//      EA_DISABLE_MOVE_CTOR(Example);
+	//  };
+	//
+	#define EA_DISABLE_MOVE_CTOR(ClassName) ClassName(ClassName&&) EA_FUNCTION_DELETE
+
+	// ------------------------------------------------------------------------
+	// EA_DISABLE_ASSIGNMENT_OPERATOR
+	//
+	// Disables the compiler generated assignment operator. This macro is
+	// provided to improve portability and clarify intent of code.
+	//
+	// Example usage:
+	//
+	//  class Example
+	//  {
+	//  private:
+	//      EA_DISABLE_ASSIGNMENT_OPERATOR(Example);
+	//  };
+	//
+	#define EA_DISABLE_ASSIGNMENT_OPERATOR(ClassName) ClassName & operator=(const ClassName &) EA_FUNCTION_DELETE
+
+	// ------------------------------------------------------------------------
+	// EA_DISABLE_MOVE_OPERATOR
+	//
+	// Disables the compiler generated move operator. This macro is
+	// provided to improve portability and clarify intent of code.
+	//
+	// Example usage:
+	//
+	//  class Example
+	//  {
+	//  private:
+	//      EA_DISABLE_MOVE_OPERATOR(Example);
+	//  };
+	//
+	#define EA_DISABLE_MOVE_OPERATOR(ClassName) ClassName & operator=(ClassName&&) EA_FUNCTION_DELETE
 
 	// ------------------------------------------------------------------------
 	// EANonCopyable

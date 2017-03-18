@@ -30,7 +30,7 @@
 // not standards-compliant in this respect, so we need an additional include.
 // The case is similar with wchar_t under C++.
 
-#if defined(EA_COMPILER_GNUC) || defined(EA_COMPILER_MSVC) || defined(EA_WCHAR_T_NON_NATIVE) || defined(CS_UNDEFINED_STRING)
+#if defined(EA_COMPILER_GNUC) || defined(EA_COMPILER_MSVC) || defined(EA_WCHAR_T_NON_NATIVE) || defined(EA_PLATFORM_KETTLE)
 	#if defined(EA_COMPILER_MSVC)
 		#pragma warning(push, 0)
 		#pragma warning(disable: 4265 4365 4836 4574)
@@ -114,8 +114,8 @@
 	   #define __STDC_FORMAT_MACROS
 	#endif
 	// The GCC PSP compiler defines standard int types (e.g. uint32_t) but not PRId8, etc.
-	// MSVC doesn't include an inttypes.h header.
-	#if !defined(EA_COMPILER_MSVC)
+	// MSVC added support for inttypes.h header in VS2013.
+	#if !defined(EA_COMPILER_MSVC) || (defined(EA_COMPILER_MSVC) && EA_COMPILER_VERSION >= 1800)
 		#include <inttypes.h> // PRId8, SCNd8, etc.
 	#endif
 	#if defined(_MSC_VER)
@@ -355,7 +355,7 @@
 	typedef double              double_t;
 #endif
 
-#if defined(EA_COMPILER_HAS_INTTYPES) && !defined(EA_COMPILER_MSVC)
+#if defined(EA_COMPILER_HAS_INTTYPES) && (!defined(EA_COMPILER_MSVC) || (defined(EA_COMPILER_MSVC) && EA_COMPILER_VERSION >= 1800))
 	#define EA_COMPILER_HAS_C99_FORMAT_MACROS 
 #endif
 
@@ -730,7 +730,11 @@
 		#endif
 	#else
 		typedef uint16_t char16_t;
-		typedef wchar_t  char32_t;
+		#if defined(__cplusplus)
+			typedef wchar_t  char32_t;
+		#else
+			typedef uint32_t char32_t;
+		#endif
 	#endif
 #endif
 
@@ -895,6 +899,8 @@
 	// static_assert is defined by the compiler.
 #elif defined(__EDG_VERSION__) && (__EDG_VERSION__ >= 401) && defined(EA_COMPILER_CPP11_ENABLED)
 	// static_assert is defined by the compiler.
+#elif !defined(__cplusplus) && defined(__GLIBC__) && defined(__USE_ISOC11)
+	// static_assert is defined by the compiler.
 #else
 	#define NEED_CUSTOM_STATIC_ASSERT
 #endif
@@ -923,19 +929,19 @@
 // ------------------------------------------------------------------------
 // EA_IS_ENABLED
 //
-// EA_IS_ENABLED is intended to be used for detecting if compile time features
-// are enabled or disabled.  It has a small advantage over using a standard
-// #if or #ifdef test, because it will generate a compilation error if the
-// define being tested has not been set.  This prevents an undefined macro
-// from being evaluated as disabled by default.
+// EA_IS_ENABLED is intended to be used for detecting if compile time features are enabled or disabled.
 //
-// To use the macro, the calling code should create a define for the feature
-// to enable or disable.  This feature define must be set to either EA_ENABLED
-// or EA_DISABLED.  (Do not try to set the feature define directly to some other
+// It has some advantages over using a standard #if or #ifdef tests:
+//	1) Fails to compile when passes numeric macro values. Valid options are strictly enabled or disabled.
+//	2) Fails to compile when passed undefined macro values rather than disabling by default
+//	3) Fails to compile when the passed macro is defined to but empty
+//
+// To use the macro, the calling code should create a define for the feature to enable or disable.  This feature define
+// must be set to either EA_ENABLED or EA_DISABLED.  (Do not try to set the feature define directly to some other
 // value.)
 //
-// Note: These macros are analogous to the Frostbite macro FB_USING used in combination
-// with FB_OFF / FB_ON.
+// Note: These macros are analogous to the Frostbite macro FB_USING used in combination with FB_OFF / FB_ON and are
+// designed to be compatible to support gradual migration.
 //
 // Example usage:
 //
@@ -949,9 +955,10 @@
 //          // USER_PROVIDED_FEATURE_DEFINE is disabled
 //      #endif
 //
-#define EA_ENABLED              1-
-#define EA_DISABLED             0-
-#define EA_IS_ENABLED(x)        ( (x 0) == 1 )
+#define EA_ENABLED              111-
+#define EA_DISABLED             333-
+// NOTE: Numeric values for x will produce a parse error while empty values produce a divide by zero, and the test is a bool for proper negation behavior
+#define EA_IS_ENABLED(x) (333 == 333 * 111 / ((x 0) * (((x 0) == 333 ? 1 : 0) + ((x 0) == 111 ? 1 : 0))))
 
 #endif // Header include guard
 
