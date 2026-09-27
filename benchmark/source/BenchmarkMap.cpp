@@ -10,16 +10,10 @@
 #include <EASTL/vector.h>
 #include <EASTL/algorithm.h>
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable: 4702) // VC++ STL headers generate this. warning C4702: unreachable code
-	#pragma warning(disable: 4350) // behavior change: X called instead of Y
-#endif
+EA_DISABLE_ALL_VC_WARNINGS()
 #include <map>
 #include <algorithm>
-#ifdef _MSC_VER
-	#pragma warning(pop)
-#endif
+EA_RESTORE_ALL_VC_WARNINGS()
 
 
 using namespace EA;
@@ -48,7 +42,7 @@ namespace
 		typename Container::const_iterator it = eastl::find(c.begin(), c.end(), findValue); // It shouldn't matter what find implementation we use here, as it merely iterates values.
 		stopwatch.Stop();
 		if(it != c.end())
-			sprintf(Benchmark::gScratchBuffer, "%p", &*it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*it);
 	}
 
 
@@ -89,7 +83,7 @@ namespace
 			++pArrayBegin;
 		}
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)temp);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)temp);
 	}
 
 
@@ -142,7 +136,7 @@ namespace
 			++pArrayBegin;
 		}
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)c.size());
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)c.size());
 	}
 
 
@@ -157,7 +151,7 @@ namespace
 		{
 			// The erase fucntion is supposed to return an iterator, but the C++ standard was 
 			// not initially clear about it and some STL implementations don't do it correctly.
-			#if (((defined(_MSC_VER) || defined(_YVALS)) && !defined(_HAS_STRICT_CONFORMANCE))) // yvals is something defined by Dinkumware STL.
+			#if (((defined(_MSC_VER) || defined(_CPPLIB_VER)) && !defined(_HAS_STRICT_CONFORMANCE))) // _CPPLIB_VER is something defined by Dinkumware STL.
 				it = c.erase(it);  // Standard behavior.
 			#else
 				// This pathway may execute at a slightly different speed than the 
@@ -172,7 +166,7 @@ namespace
 			++it;
 		}
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p %p", &c, &it);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p %p", &c, &it);
 	}
 
 
@@ -189,7 +183,7 @@ namespace
 		stopwatch.Restart();
 		c.erase(it1, it2);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p %p %p", &c, &it1, &it2);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p %p %p", &c, &it1, &it2);
 	}
 
 
@@ -199,7 +193,7 @@ namespace
 		stopwatch.Restart();
 		c.clear();
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)c.size());
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)c.size());
 	}
 
 

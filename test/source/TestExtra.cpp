@@ -14,6 +14,8 @@ namespace eastl
 	template <typename T, typename Allocator> class basic_string;
 	typedef basic_string<char, allocator> local_string8;  // collides with eastl::string8 in bulkbuilds
 
+	template <typename T> struct local_less {};
+
 	static void UseForwardDeclaredString(local_string8*)
 	{
 	}
@@ -28,7 +30,7 @@ namespace eastl
 
 
 	template <typename Value, typename Hash, typename Predicate, typename Allocator, bool bCacheHashCode> class hash_set;
-	typedef hash_set<char, char, char, allocator, false> hash_set8;
+	typedef hash_set<char, char, local_less<char>, allocator, false> hash_set8;
 
 	static void UseForwardDeclaredHashSet(hash_set8*)
 	{
@@ -36,7 +38,7 @@ namespace eastl
 
 
 	template <typename Key, typename T, typename Compare, typename Allocator> class map;
-	typedef map<char, char, char, allocator> map8;
+	typedef map<char, char, local_less<char>, allocator> map8;
 
 	static void UseForwardDeclaredMap(map8*)
 	{
@@ -45,6 +47,7 @@ namespace eastl
 
 
 #include "EASTLTest.h"
+#include <EAStdC/EASprintf.h>
 #include <EASTL/functional.h>
 #include <EASTL/utility.h>
 #include <EASTL/memory.h>
@@ -64,6 +67,7 @@ namespace eastl
 #include <EASTL/string.h>
 #include <EASTL/hash_set.h>
 #include <EASTL/random.h>
+#include <EASTL/bit.h>
 #include <EASTL/core_allocator_adapter.h>
 #include <EASTL/bonus/call_traits.h>
 #include <EASTL/bonus/compressed_pair.h>
@@ -278,8 +282,8 @@ static int TestQueue()
 
 	{
 		// queue(const Sequence& x = Sequence());
-		queue<TestObject, list<TestObject> > toListQueue;
-		queue<TestObject, list<TestObject> > toListQueue2;
+		queue<TestObject, list<TestObject>> toListQueue;
+		queue<TestObject, list<TestObject>> toListQueue2;
 
 
 		// global operators
@@ -289,7 +293,6 @@ static int TestQueue()
 		EATEST_VERIFY( (toListQueue >= toListQueue2));
 		EATEST_VERIFY(!(toListQueue <  toListQueue2));
 		EATEST_VERIFY(!(toListQueue >  toListQueue2));
-
 
 		// bool      empty() const;
 		// size_type size() const;
@@ -331,6 +334,13 @@ static int TestQueue()
 		EATEST_VERIFY(toListQueue.size() == 0);
 
 
+		// decltype(auto) emplace(Args&&... args);
+		toListQueue.emplace(1);
+		EATEST_VERIFY(!toListQueue.empty());
+		EATEST_VERIFY(toListQueue.front() == TestObject(1));
+		EATEST_VERIFY(toListQueue.size() == 1);
+
+
 		// container_type&       get_container();
 		// const container_type& get_container() const;
 		list<TestObject>& ref = toListQueue.get_container();
@@ -338,69 +348,143 @@ static int TestQueue()
 
 
 		// queue(std::initializer_list<value_type> ilist);
-		#if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
-			queue<int> intQueue = { 3, 4, 5 };
-			EATEST_VERIFY(intQueue.size() == 3);
-			EATEST_VERIFY(intQueue.front() == 3);
-			intQueue.pop();
-			EATEST_VERIFY(intQueue.front() == 4);
-			intQueue.pop();
-			EATEST_VERIFY(intQueue.front() == 5);
-		#endif
+		queue<int> intQueue = { 3, 4, 5 };
+		EATEST_VERIFY(intQueue.size() == 3);
+		EATEST_VERIFY(intQueue.front() == 3);
+		intQueue.pop();
+		EATEST_VERIFY(intQueue.front() == 4);
+		intQueue.pop();
+		EATEST_VERIFY(intQueue.front() == 5);
 	}
 
+#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+	{
+		// queue(const Sequence& x = Sequence());
+		queue<TestObject, list<TestObject>> toListQueue;
+		queue<TestObject, list<TestObject>> toListQueue2;
+
+
+		// global operators
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) == 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) != 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) <= 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) >= 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) < 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) > 0));
+
+		// bool      empty() const;
+		// size_type size() const;
+		EATEST_VERIFY(toListQueue.empty());
+		EATEST_VERIFY(toListQueue.size() == 0);
+
+		// Verify toListQueue > toListQueue2
+		toListQueue.push(TestObject(0));
+		toListQueue.push(TestObject(1));
+		toListQueue2.push(TestObject(0));
+
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) == 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) != 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) >= 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) <= 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) > 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) < 0));
+
+		// Verify toListQueue2 > toListQueue by element size
+		toListQueue2.push(TestObject(3));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) == 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) != 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) <= 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) >= 0));
+		EATEST_VERIFY( ((toListQueue <=> toListQueue2) < 0));
+		EATEST_VERIFY(!((toListQueue <=> toListQueue2) > 0));
+
+		queue<TestObject, list<TestObject>> toListQueue3;
+		queue<TestObject, list<TestObject>> toListQueue4;
+
+		for (int i = 0; i < 10; i++)
+		{
+			toListQueue3.push(TestObject(i));
+			if (i < 5)
+				toListQueue4.push(TestObject(i));
+		}
+
+		// Verify toListQueue4 is a strict subset of toListQueue3
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) == 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) != 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) >= 0));
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) <= 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) > 0));
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) < 0));
+
+		// Verify that even thoughn toListQueue4 has a smaller size, it's lexicographically larger
+		toListQueue4.push(TestObject(11));
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) == 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) != 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) <= 0));
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) >= 0));
+		EATEST_VERIFY( ((toListQueue3 <=> toListQueue4) < 0));
+		EATEST_VERIFY(!((toListQueue3 <=> toListQueue4) > 0));
+		
+	}
+
+	{
+		queue<TestObject, list<TestObject>> toListQueue1;
+		queue<TestObject, list<TestObject>> toListQueue2;
+		queue<TestObject, list<TestObject>> toListQueue3;
+
+		for (int i = 0; i < 10; i++)
+		{
+			toListQueue1.push(TestObject(i));
+			toListQueue2.push(TestObject(9-i));
+			if (i < 5)
+				toListQueue3.push(TestObject(i));
+		}
+
+		struct weak_ordering_queue
+		{
+			queue<TestObject, list<TestObject>> queue;
+		    inline std::weak_ordering operator<=>(const weak_ordering_queue& b) const { return queue <=> b.queue; }
+		};
+
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_queue{toListQueue1}, weak_ordering_queue{toListQueue2}) == std::weak_ordering::less);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_queue{toListQueue3}, weak_ordering_queue{toListQueue1}) == std::weak_ordering::less);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_queue{toListQueue2}, weak_ordering_queue{toListQueue1}) == std::weak_ordering::greater);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_queue{toListQueue2}, weak_ordering_queue{toListQueue3}) == std::weak_ordering::greater);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_queue{toListQueue1}, weak_ordering_queue{toListQueue1}) == std::weak_ordering::equivalent);
+	}
+	#endif
 
 	{
 		vector<TestObject> toVector;
 		for(int i = 0; i < 100; i++)
 			toVector.push_back(TestObject(i));
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// template <class Allocator>
-			// queue(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
-			//
-			// explicit queue(container_type&& x);
-			//
-			// void push(value_type&& x);
+		// template <class Allocator>
+		// queue(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
+		//
+		// explicit queue(container_type&& x);
+		//
+		// void push(value_type&& x);
 
-			queue<TestObject, vector<TestObject> > toQ_0;
-			queue<TestObject, vector<TestObject> > toQ_A(eastl::move(toQ_0), toQ_0.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
-			EATEST_VERIFY(toQ_A.size() == 0);
-			toQ_A.push(TestObject(1000));
-			EATEST_VERIFY(toQ_A.size() == 1);
+		queue<TestObject, vector<TestObject> > toQ_0;
+		queue<TestObject, vector<TestObject> > toQ_A(eastl::move(toQ_0), toQ_0.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
+		EATEST_VERIFY(toQ_A.size() == 0);
+		toQ_A.push(TestObject(1000));
+		EATEST_VERIFY(toQ_A.size() == 1);
 
-			queue<TestObject, vector<TestObject> > toQ_B(eastl::move(toQ_A), toQ_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
-			EATEST_VERIFY((toQ_B.size() == 1) && toQ_A.empty());
+		queue<TestObject, vector<TestObject> > toQ_B(eastl::move(toQ_A), toQ_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
+		EATEST_VERIFY((toQ_B.size() == 1) && toQ_A.empty());
 
-			eastl::vector<TestObject> toVectorM(toVector);
-			queue<TestObject, vector<TestObject> > toQ_C(eastl::move(toVectorM));
-			EATEST_VERIFY((toQ_C.size() == toVector.size()) && toVectorM.empty());
+		eastl::vector<TestObject> toVectorM(toVector);
+		queue<TestObject, vector<TestObject> > toQ_C(eastl::move(toVectorM));
+		EATEST_VERIFY((toQ_C.size() == toVector.size()) && toVectorM.empty());
 
-		#endif
+		// template <class... Args>
+		// void emplace_back(Args&&... args);
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-			// template <class... Args>
-			// void emplace_back(Args&&... args);
-
-			queue<TestObject, vector<TestObject> > toQ_D;
-			toQ_D.emplace_back(0, 1, 2);
-			EATEST_VERIFY(toQ_D.size() == 1) && (toQ_D.back() == TestObject(0, 1, 2));
-
-		#else
-			#if EASTL_MOVE_SEMANTICS_ENABLED
-				// void emplace_back(value_type&& x);
-				queue<TestObject, vector<TestObject> > toQ_D;
-				toQ_D.emplace_back(TestObject(0, 1, 2));
-				EATEST_VERIFY(toQ_D.size() == 1) && (toQ_D.back() == TestObject(0, 1, 2));
-
-			#endif
-			// void emplace_back(const value_type& x);
-			queue<TestObject, vector<TestObject> > toQ_E;
-			TestObject to(0, 1, 2);
-			toQ_E.emplace_back(to);
-			EATEST_VERIFY(toQ_E.size() == 1) && (toQ_E.back() == TestObject(0, 1, 2));
-		#endif
-
+		queue<TestObject, vector<TestObject> > toQ_D;
+		toQ_D.emplace(0, 1, 2);
+		EATEST_VERIFY(toQ_D.size() == 1) && (toQ_D.back() == TestObject(0, 1, 2));
 	}
 
 
@@ -554,54 +638,34 @@ static int TestPriorityQueue()
 		for(int i = 0; i < 100; i++)
 			toVector.push_back(TestObject(i));
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// template <class Allocator>
-			// priority_queue(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
-			//
-			// explicit priority_queue(const compare_type& compare, container_type&& x);
-			//
-			// template <class InputIterator>
-			// priority_queue(InputIterator first, InputIterator last, const compare_type& compare, container_type&& x);
-			//
-			// void push(value_type&& x);
+		// template <class Allocator>
+		// priority_queue(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
+		//
+		// explicit priority_queue(const compare_type& compare, container_type&& x);
+		//
+		// template <class InputIterator>
+		// priority_queue(InputIterator first, InputIterator last, const compare_type& compare, container_type&& x);
+		//
+		// void push(value_type&& x);
 
-			priority_queue<TestObject, vector<TestObject> > toPQ_0;
-			priority_queue<TestObject, vector<TestObject> > toPQ_A(toPQ_0.get_container().begin(), toPQ_0.get_container().begin(), eastl::less<TestObject>(), toPQ_0.get_container());
-			EATEST_VERIFY(toPQ_A.size() == 0);
-			toPQ_A.push(TestObject(1000));
-			EATEST_VERIFY(toPQ_A.size() == 1);
+		priority_queue<TestObject, vector<TestObject> > toPQ_0;
+		priority_queue<TestObject, vector<TestObject> > toPQ_A(toPQ_0.get_container().begin(), toPQ_0.get_container().begin(), eastl::less<TestObject>(), toPQ_0.get_container());
+		EATEST_VERIFY(toPQ_A.size() == 0);
+		toPQ_A.push(TestObject(1000));
+		EATEST_VERIFY(toPQ_A.size() == 1);
 
-			priority_queue<TestObject, vector<TestObject> > toPQ_B(eastl::move(toPQ_A), toPQ_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
-			EATEST_VERIFY((toPQ_B.size() == 1) && toPQ_A.empty());
+		priority_queue<TestObject, vector<TestObject> > toPQ_B(eastl::move(toPQ_A), toPQ_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
+		EATEST_VERIFY((toPQ_B.size() == 1) && toPQ_A.empty());
 
-			eastl::vector<TestObject> toVectorM(toVector);
-			priority_queue<TestObject, vector<TestObject> > toPQ_C(eastl::less<TestObject>(), eastl::move(toVectorM));
-			EATEST_VERIFY((toPQ_C.size() == toVector.size()) && toVectorM.empty());
+		eastl::vector<TestObject> toVectorM(toVector);
+		priority_queue<TestObject, vector<TestObject> > toPQ_C(eastl::less<TestObject>(), eastl::move(toVectorM));
+		EATEST_VERIFY((toPQ_C.size() == toVector.size()) && toVectorM.empty());
 
-		#endif
-
-		#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-			// template <class... Args>
-			// void emplace(Args&&... args);
-
-			priority_queue<TestObject, vector<TestObject> > toPQ_D;
-			toPQ_D.emplace(0, 1, 2);
-			EATEST_VERIFY(toPQ_D.size() == 1) && (toPQ_D.top() == TestObject(0, 1, 2));
-
-		#else
-			#if EASTL_MOVE_SEMANTICS_ENABLED
-				// void emplace(value_type&& x);
-				priority_queue<TestObject, vector<TestObject> > toPQ_D;
-				toPQ_D.emplace(TestObject(0, 1, 2));
-				EATEST_VERIFY(toPQ_D.size() == 1) && (toPQ_D.top() == TestObject(0, 1, 2));
-
-			#endif
-			// void emplace(const value_type& x);
-			priority_queue<TestObject, vector<TestObject> > toPQ_E;
-			TestObject to(0, 1, 2);
-			toPQ_E.emplace(to);
-			EATEST_VERIFY(toPQ_E.size() == 1) && (toPQ_E.top() == TestObject(0, 1, 2));
-		#endif
+		// template <class... Args>
+		// void emplace(Args&&... args);
+		priority_queue<TestObject, vector<TestObject> > toPQ_D;
+		toPQ_D.emplace(0, 1, 2);
+		EATEST_VERIFY(toPQ_D.size() == 1) && (toPQ_D.top() == TestObject(0, 1, 2));
 	}
 
 
@@ -654,7 +718,6 @@ static int TestStack()
 		EATEST_VERIFY(!(toListStack <  toListStack2));
 		EATEST_VERIFY(!(toListStack >  toListStack2));
 
-
 		// void push(const value_type& value);
 		// reference       top();
 		// const_reference top() const;
@@ -699,57 +762,144 @@ static int TestStack()
 		#endif
 	}
 
+#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+	{
+		// stack(const Sequence& x = Sequence());
+		stack<TestObject, list<TestObject> > toListStack;
+		stack<TestObject, list<TestObject> > toListStack2;
+
+		// bool      empty() const;
+		// size_type size() const;
+		EATEST_VERIFY(toListStack.empty());
+		EATEST_VERIFY(toListStack.size() == 0);
+
+
+		// global operators
+		EATEST_VERIFY( ((toListStack <=> toListStack2) == 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) != 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) <= 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) >= 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) < 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) > 0));
+
+		toListStack.push(TestObject(0));
+		toListStack.push(TestObject(1));
+		toListStack2.push(TestObject(0));
+
+		EATEST_VERIFY(!((toListStack <=> toListStack2) == 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) != 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) >= 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) <= 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) > 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) < 0));
+
+		// Verify toListStack2 > toListStack by element size
+		toListStack2.push(TestObject(3));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) == 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) != 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) <= 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) >= 0));
+		EATEST_VERIFY( ((toListStack <=> toListStack2) < 0));
+		EATEST_VERIFY(!((toListStack <=> toListStack2) > 0));
+
+		stack<TestObject, list<TestObject> > toListStack3;
+		stack<TestObject, list<TestObject> > toListStack4;
+
+		for (int i = 0; i < 10; i++)
+		{
+			toListStack3.push(TestObject(i));
+			if (i < 5)
+				toListStack4.push(TestObject(i));
+		}
+
+		// Verify toListStack4 is a strict subset of toListStack3
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) == 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) != 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) >= 0));
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) <= 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) > 0));
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) < 0));
+
+		// Verify that even thoughn toListQueue4 has a smaller size, it's lexicographically larger
+		toListStack4.push(TestObject(11));
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) == 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) != 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) <= 0));
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) >= 0));
+		EATEST_VERIFY( ((toListStack3 <=> toListStack4) < 0));
+		EATEST_VERIFY(!((toListStack3 <=> toListStack4) > 0));
+	}
+
+	{
+		stack<TestObject, list<TestObject> > toListStack1;
+		stack<TestObject, list<TestObject> > toListStack2;
+		stack<TestObject, list<TestObject> > toListStack3;
+
+		for (int i = 0; i < 10; i++)
+		{
+			toListStack1.push(TestObject(i));
+			toListStack2.push(TestObject(9-i));
+			if (i < 5)
+				toListStack3.push(TestObject(i));
+		}
+
+		struct weak_ordering_stack
+		{
+			stack<TestObject, list<TestObject> > stack;
+		    inline std::weak_ordering operator<=>(const weak_ordering_stack& b) const { return stack <=> b.stack; }
+		};
+
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_stack{toListStack1}, weak_ordering_stack{toListStack2}) == std::weak_ordering::less);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_stack{toListStack3}, weak_ordering_stack{toListStack1}) == std::weak_ordering::less);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_stack{toListStack2}, weak_ordering_stack{toListStack1}) == std::weak_ordering::greater);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_stack{toListStack2}, weak_ordering_stack{toListStack3}) == std::weak_ordering::greater);
+		EATEST_VERIFY(synth_three_way{}(weak_ordering_stack{toListStack1}, weak_ordering_stack{toListStack1}) == std::weak_ordering::equivalent);
+	}
+#endif
+
 
 	{
 		vector<TestObject> toVector;
 		for(int i = 0; i < 100; i++)
 			toVector.push_back(TestObject(i));
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// template <class Allocator>
-			// stack(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
-			//
-			// explicit stack(container_type&& x);
-			//
-			// void push(value_type&& x);
+		// template <class Allocator>
+		// stack(this_type&& x, const Allocator& allocator, typename eastl::enable_if<eastl::uses_allocator<container_type, Allocator>::value>::type* = NULL);
+		//
+		// explicit stack(container_type&& x);
+		//
+		// void push(value_type&& x);
+		stack<TestObject, vector<TestObject> > toS_0;
+		stack<TestObject, vector<TestObject> > toS_A(eastl::move(toS_0), toS_0.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
+		EATEST_VERIFY(toS_A.size() == 0);
+		toS_A.push(TestObject(1000));
+		EATEST_VERIFY(toS_A.size() == 1);
 
-			stack<TestObject, vector<TestObject> > toS_0;
-			stack<TestObject, vector<TestObject> > toS_A(eastl::move(toS_0), toS_0.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
-			EATEST_VERIFY(toS_A.size() == 0);
-			toS_A.push(TestObject(1000));
-			EATEST_VERIFY(toS_A.size() == 1);
+		stack<TestObject, vector<TestObject> > toS_B(eastl::move(toS_A), toS_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
+		EATEST_VERIFY((toS_B.size() == 1) && toS_A.empty());
 
-			stack<TestObject, vector<TestObject> > toS_B(eastl::move(toS_A), toS_A.get_container().get_allocator()); // It would be better if we also tested an alternative allocator.
-			EATEST_VERIFY((toS_B.size() == 1) && toS_A.empty());
+		eastl::vector<TestObject> toVectorM(toVector);
+		stack<TestObject, vector<TestObject> > toS_C(eastl::move(toVectorM));
+		EATEST_VERIFY((toS_C.size() == toVector.size()) && toVectorM.empty());
 
-			eastl::vector<TestObject> toVectorM(toVector);
-			stack<TestObject, vector<TestObject> > toS_C(eastl::move(toVectorM));
-			EATEST_VERIFY((toS_C.size() == toVector.size()) && toVectorM.empty());
-
-		#endif
-
-		#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
+		EASTL_INTERNAL_DISABLE_DEPRECATED() // emplace_back: was declared deprecated
+		{
 			// template <class... Args>
 			// void emplace_back(Args&&... args);
-
-			stack<TestObject, vector<TestObject> > toS_D;
+			stack<TestObject, vector<TestObject>> toS_D;
 			toS_D.emplace_back(0, 1, 2);
 			EATEST_VERIFY(toS_D.size() == 1) && (toS_D.top() == TestObject(0, 1, 2));
+		}
+		EASTL_INTERNAL_RESTORE_DEPRECATED() // emplace_back: was declared deprecated
 
-		#else
-			#if EASTL_MOVE_SEMANTICS_ENABLED
-				// void emplace_back(value_type&& x);
-				stack<TestObject, vector<TestObject> > toS_D;
-				toS_D.emplace_back(TestObject(0, 1, 2));
-				EATEST_VERIFY(toS_D.size() == 1) && (toS_D.top() == TestObject(0, 1, 2));
-
-			#endif
-			// void emplace_back(const value_type& x);
-			stack<TestObject, vector<TestObject> > toS_E;
-			TestObject to(0, 1, 2);
-			toS_E.emplace_back(to);
-			EATEST_VERIFY(toS_E.size() == 1) && (toS_E.top() == TestObject(0, 1, 2));
-		#endif
+		{
+			// template <class... Args>
+			// decltype(auto) emplace(Args&&... args);
+			stack<TestObject, vector<TestObject>> toS_D;
+			auto it = toS_D.emplace(0, 1, 2);
+			EATEST_VERIFY(toS_D.size() == 1) && (toS_D.top() == TestObject(0, 1, 2));
+			EATEST_VERIFY(it == TestObject(0, 1, 2));
+		}
 	}
 
 
@@ -839,8 +989,9 @@ static int TestCallTraits()
 	CallTraitsContainer<int&>   ctcVoid(nErrorCount);
 	CallTraitsContainer<int[3]> ctcIntArray;
 
-	char buffer[128];
-	sprintf(buffer, "%p %p %p %p", &ctcInt, &ctcIntPtr, &ctcVoid, &ctcIntArray);
+	const int kBufferSize = 128;
+	char buffer[kBufferSize];
+	EA::StdC::Snprintf(buffer, kBufferSize, "%p %p %p %p", &ctcInt, &ctcIntPtr, &ctcVoid, &ctcIntArray);
 
 	return nErrorCount;
 }
@@ -906,6 +1057,286 @@ static int TestNumeric()
 	return nErrorCount;
 }
 
+#if defined(EA_COMPILER_CPP20_ENABLED)
+
+EA_DISABLE_VC_WARNING(4756) // warning C4756: overflow in constant arithmetic
+
+template <typename T>
+static constexpr int SignedIntMidpoint()
+{
+	int nErrorCount = 0;
+
+	EATEST_VERIFY(eastl::midpoint(T(0), T(0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(2)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(4)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(8)) == T(4));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(0)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(4), T(0)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(8), T(0)) == T(4));
+
+	EATEST_VERIFY(eastl::midpoint(T(1), T(1)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(1), T(3)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(3), T(1)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(6)) == T(4));
+	EATEST_VERIFY(eastl::midpoint(T(6), T(2)) == T(4));
+
+	EATEST_VERIFY(eastl::midpoint(T(-1), T(-1)) == T(-1));
+	EATEST_VERIFY(eastl::midpoint(T(-1), T(-3)) == T(-2));
+	EATEST_VERIFY(eastl::midpoint(T(-3), T(-1)) == T(-2));
+	EATEST_VERIFY(eastl::midpoint(T(-2), T(-6)) == T(-4));
+	EATEST_VERIFY(eastl::midpoint(T(-6), T(-2)) == T(-4));
+
+	EATEST_VERIFY(eastl::midpoint(T(-0), T(0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(-0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(-0), T(-0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(-1), T(1)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(-10), T(10)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(-3), T(7)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(-7), T(3)) == T(-2));
+	EATEST_VERIFY(eastl::midpoint(T(-2), T(6)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(-6), T(2)) == T(-2));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(-6)) == T(-2));
+	EATEST_VERIFY(eastl::midpoint(T(6), T(-2)) == T(2));
+
+	// If an odd sum, midpoint should round towards the LHS operand.
+	EATEST_VERIFY(eastl::midpoint(T(0), T(5)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(5), T(0)) == T(3));
+	EATEST_VERIFY(eastl::midpoint(T(1), T(4)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(4), T(1)) == T(3));
+	EATEST_VERIFY(eastl::midpoint(T(7), T(10)) == T(8));
+	EATEST_VERIFY(eastl::midpoint(T(10), T(7)) == T(9));
+	EATEST_VERIFY(eastl::midpoint(T(-1), T(2)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(-1)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(-5), T(4)) == T(-1));
+	EATEST_VERIFY(eastl::midpoint(T(4), T(-5)) == T(0));
+
+	// Test absolute limits
+	constexpr T MIN = eastl::numeric_limits<T>::min();
+	constexpr T MAX = eastl::numeric_limits<T>::max();
+
+	EATEST_VERIFY(eastl::midpoint(MIN, MIN) == MIN);
+	EATEST_VERIFY(eastl::midpoint(MAX, MAX) == MAX);
+	EATEST_VERIFY(eastl::midpoint(MIN, MAX) == T(-1));
+	EATEST_VERIFY(eastl::midpoint(MAX, MIN) == T(0));
+	EATEST_VERIFY(eastl::midpoint(MIN, T(0)) == MIN / 2);
+	EATEST_VERIFY(eastl::midpoint(T(0), MIN) == MIN / 2);
+	EATEST_VERIFY(eastl::midpoint(MAX, T(0)) == (MAX / 2) + 1);
+	EATEST_VERIFY(eastl::midpoint(T(0), MAX) == (MAX / 2));
+
+	EATEST_VERIFY(eastl::midpoint(MIN, T(10)) == (MIN / 2) + 5);
+	EATEST_VERIFY(eastl::midpoint(T(10), MIN) == (MIN / 2) + 5);
+	EATEST_VERIFY(eastl::midpoint(MAX, T(10)) == (MAX / 2) + 5 + 1);
+	EATEST_VERIFY(eastl::midpoint(T(10), MAX) == (MAX / 2) + 5);
+	EATEST_VERIFY(eastl::midpoint(MIN, T(-10)) == (MIN / 2) - 5);
+	EATEST_VERIFY(eastl::midpoint(T(-10), MIN) == (MIN / 2) - 5);
+	EATEST_VERIFY(eastl::midpoint(MAX, T(-10)) == (MAX / 2) - 5 + 1);
+	EATEST_VERIFY(eastl::midpoint(T(-10), MAX) == (MAX / 2) - 5);
+
+	return nErrorCount;
+}
+
+template <typename T>
+static constexpr int UnsignedIntMidpoint()
+{
+	int nErrorCount = 0;
+
+	EATEST_VERIFY(eastl::midpoint(T(0), T(0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(2)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(4)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(0), T(8)) == T(4));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(0)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(4), T(0)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(8), T(0)) == T(4));
+
+	EATEST_VERIFY(eastl::midpoint(T(1), T(1)) == T(1));
+	EATEST_VERIFY(eastl::midpoint(T(1), T(3)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(3), T(1)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(2), T(6)) == T(4));
+	EATEST_VERIFY(eastl::midpoint(T(6), T(2)) == T(4));
+
+	// If an odd sum, midpoint should round towards the LHS operand.
+	EATEST_VERIFY(eastl::midpoint(T(0), T(5)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(5), T(0)) == T(3));
+	EATEST_VERIFY(eastl::midpoint(T(1), T(4)) == T(2));
+	EATEST_VERIFY(eastl::midpoint(T(4), T(1)) == T(3));
+	EATEST_VERIFY(eastl::midpoint(T(7), T(10)) == T(8));
+	EATEST_VERIFY(eastl::midpoint(T(10), T(7)) == T(9));
+
+	// Test absolute limits
+	constexpr T MIN = eastl::numeric_limits<T>::min();
+	constexpr T MAX = eastl::numeric_limits<T>::max();
+
+	EATEST_VERIFY(eastl::midpoint(MIN, MIN) == MIN);
+	EATEST_VERIFY(eastl::midpoint(MAX, MAX) == MAX);
+	EATEST_VERIFY(eastl::midpoint(MIN, MAX) == MAX / 2);
+	EATEST_VERIFY(eastl::midpoint(MAX, MIN) == (MAX / 2) + 1);
+	EATEST_VERIFY(eastl::midpoint(MIN, T(0)) == T(0));
+	EATEST_VERIFY(eastl::midpoint(T(0), MIN) == T(0));
+
+	EATEST_VERIFY(eastl::midpoint(MIN, T(10)) == (MIN / 2) + 5);
+	EATEST_VERIFY(eastl::midpoint(T(10), MIN) == (MIN / 2) + 5);
+	EATEST_VERIFY(eastl::midpoint(MAX, T(10)) == (MAX / 2) + 5 + 1);
+	EATEST_VERIFY(eastl::midpoint(T(10), MAX) == (MAX / 2) + 5);
+
+	return nErrorCount;
+}
+
+template <typename T>
+static constexpr int FloatMidpoint()
+{
+	// for use with floats, double, long doubles.
+	int nErrorCount = 0;
+	EATEST_VERIFY(eastl::midpoint(T(0.0), T(0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::midpoint(T(0.0), T(2.0)) == T(1.0));
+	EATEST_VERIFY(eastl::midpoint(T(0.0), T(4.0)) == T(2.0));
+	EATEST_VERIFY(eastl::midpoint(T(2.0), T(0.0)) == T(1.0));
+	EATEST_VERIFY(eastl::midpoint(T(4.0), T(0.0)) == T(2.0));
+
+	EATEST_VERIFY(eastl::midpoint(T(0.5), T(0.5)) == T(0.5));
+	EATEST_VERIFY(eastl::midpoint(T(0.0), T(0.5)) == T(0.25));
+	EATEST_VERIFY(eastl::midpoint(T(0.5), T(0.0)) == T(0.25));
+	EATEST_VERIFY(eastl::midpoint(T(0.5), T(1.0)) == T(0.75));
+	EATEST_VERIFY(eastl::midpoint(T(1.0), T(0.5)) == T(0.75));
+
+	EATEST_VERIFY(eastl::midpoint(T(-0.0), T(0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::midpoint(T(0.0), T(-0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::midpoint(T(-0.0), T(-0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::midpoint(T(-1.0), T(2.0)) == T(0.5));
+	EATEST_VERIFY(eastl::midpoint(T(-2.0), T(1)) == T(-0.5));
+	EATEST_VERIFY(eastl::midpoint(T(-3.0), T(6.0)) == T(1.5));
+	EATEST_VERIFY(eastl::midpoint(T(-6.0), T(3.0)) == T(-1.5));
+
+	// Test absolute limits
+	const T MIN = eastl::numeric_limits<T>::min();
+	const T MAX = eastl::numeric_limits<T>::max();
+
+	EATEST_VERIFY(eastl::midpoint(MIN, MIN) == MIN);
+	EATEST_VERIFY(eastl::midpoint(MAX, MAX) == MAX);
+	EATEST_VERIFY(eastl::midpoint(MIN, MAX) == MAX / 2);
+	EATEST_VERIFY(eastl::midpoint(MAX, MIN) == MAX / 2);
+	EATEST_VERIFY(eastl::midpoint(-MAX, MIN) == -MAX / 2);
+
+	EATEST_VERIFY(eastl::midpoint(MIN, T(9.0)) == T(4.5));
+	EATEST_VERIFY(eastl::midpoint(MIN, T(-9.0)) == T(-4.5));
+	EATEST_VERIFY(eastl::midpoint(T(9.0), MIN) == T(4.5));
+	EATEST_VERIFY(eastl::midpoint(T(-9.0), MIN) == T(-4.5));
+	EATEST_VERIFY(eastl::midpoint(MAX, T(9.0)) == MAX / 2 + T(4.5));
+	EATEST_VERIFY(eastl::midpoint(MAX, T(-9.0)) == MAX / 2 - T(4.5));
+	EATEST_VERIFY(eastl::midpoint(T(9.0), MAX) == MAX / 2 + T(4.5));
+	EATEST_VERIFY(eastl::midpoint(T(-9.0), MAX) == MAX / 2 - T(4.5));
+
+	return nErrorCount;
+}
+
+template <typename T>
+static constexpr int PointerMidpoint()
+{
+	int nErrorCount = 0;
+
+	const T ARR[100] = {};
+
+	EATEST_VERIFY(eastl::midpoint(ARR, ARR) == ARR);
+	EATEST_VERIFY(eastl::midpoint(ARR, ARR + 100) == ARR + 50);
+	EATEST_VERIFY(eastl::midpoint(ARR + 100, ARR) == ARR + 50);
+	EATEST_VERIFY(eastl::midpoint(ARR, ARR + 25) == ARR + 12);
+	EATEST_VERIFY(eastl::midpoint(ARR + 25, ARR) == ARR + 13);
+	EATEST_VERIFY(eastl::midpoint(ARR, ARR + 13) == ARR + 6);
+	EATEST_VERIFY(eastl::midpoint(ARR + 13, ARR) == ARR + 7);
+	EATEST_VERIFY(eastl::midpoint(ARR + 50, ARR + 100) == ARR + 75);
+	EATEST_VERIFY(eastl::midpoint(ARR + 100, ARR + 50) == ARR + 75);
+
+	return nErrorCount;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// TestMidpoint
+//
+static int TestMidpoint()
+{
+	int nErrorCount = 0;
+
+	// template <typename T>
+	// constexpr eastl::enable_if_t<eastl::is_arithmetic_v<T> && !eastl::is_same_v<eastl::remove_cv_t<T>, bool>, T> 
+	// midpoint(const T lhs, const T rhs) EA_NOEXCEPT
+	nErrorCount += SignedIntMidpoint<int>();
+	nErrorCount += SignedIntMidpoint<char>();
+	nErrorCount += SignedIntMidpoint<short>();
+	nErrorCount += SignedIntMidpoint<long>();
+	nErrorCount += SignedIntMidpoint<long long>();
+
+	nErrorCount += UnsignedIntMidpoint<unsigned int>();
+	nErrorCount += UnsignedIntMidpoint<unsigned char>();
+	nErrorCount += UnsignedIntMidpoint<unsigned short>();
+	nErrorCount += UnsignedIntMidpoint<unsigned long>();
+	nErrorCount += UnsignedIntMidpoint<unsigned long long>();
+
+	nErrorCount += FloatMidpoint<float>();
+	nErrorCount += FloatMidpoint<double>();
+	nErrorCount += FloatMidpoint<long double>();
+
+	// template <typename T>
+	// constexpr eastl::enable_if_t<eastl::is_object_v<T>, const T*> midpoint(const T* lhs, const T* rhs)
+	nErrorCount += PointerMidpoint<int>();
+	nErrorCount += PointerMidpoint<char>();
+	nErrorCount += PointerMidpoint<short>();
+	nErrorCount += PointerMidpoint<float>();
+	nErrorCount += PointerMidpoint<double>();
+	nErrorCount += PointerMidpoint<long double>();
+
+	return nErrorCount;
+}
+
+EA_RESTORE_VC_WARNING(); // warning C4756: overflow in constant arithmetic
+
+#endif
+
+template <typename T>
+static constexpr int FloatLerp()
+{
+	int nErrorCount = 0;
+
+	EATEST_VERIFY(eastl::lerp(T(0.0), T(0.0), T(0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(0.0), T(0.0)) == T(1.0));
+	EATEST_VERIFY(eastl::lerp(T(-1.0), T(0.0), T(0.0)) == T(-1.0));
+	EATEST_VERIFY(eastl::lerp(T(0.0), T(1.0), T(0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(0.0), T(-1.0), T(0.0)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(-1.0), T(1.0), T(1.0)) == T(1.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(-1.0), T(1.0)) == T(-1.0));
+	EATEST_VERIFY(eastl::lerp(T(-1.0), T(1.0), T(0.5)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(-1.0), T(0.5)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(5.0), T(5.0), T(0.5)) == T(5.0));
+	EATEST_VERIFY(eastl::lerp(T(-5.0), T(-5.0), T(0.5)) == T(-5.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(2.0), T(1.0)) == T(2.0));
+	EATEST_VERIFY(eastl::lerp(T(2.0), T(1.0), T(1.0)) == T(1.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(2.0), T(1.0)) == T(2.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(2.0), T(2.0)) == T(3.0));
+	EATEST_VERIFY(eastl::lerp(T(2.0), T(1.0), T(2.0)) == T(0.0));
+	EATEST_VERIFY(eastl::lerp(T(1.0), T(-2.0), T(2.0)) == T(-5.0));
+	EATEST_VERIFY(eastl::lerp(T(-1.0), T(2.0), T(2.0)) == T(5.0));
+	EATEST_VERIFY(eastl::lerp(T(-1.5), T(1.5), T(0.75)) == T(0.75));
+	EATEST_VERIFY(eastl::lerp(T(0.125), T(1.75), T(0.25)) == T(0.53125));
+	EATEST_VERIFY(eastl::lerp(T(-0.125), T(-1.75), T(0.5)) == T(-0.9375));
+	EATEST_VERIFY(eastl::lerp(T(-0.125), T(1.5), T(2.5)) == T(3.9375));
+
+	return nErrorCount;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TestLerp
+//
+static int TestLerp()
+{
+	int nErrorCount = 0;
+
+	// template <class T>
+	// constexpr T lerp(const T a, const T b, const T t) EA_NOEXCEPT
+	nErrorCount += FloatLerp<float>();
+	nErrorCount += FloatLerp<double>();
+	nErrorCount += FloatLerp<long double>();
+
+	return nErrorCount;
+}
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -915,6 +1346,7 @@ static int TestAdaptors()
 {
 	int nErrorCount = 0;
 
+	// reverse lvalue container
 	{
 		int int_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 		eastl::vector<int> original(begin(int_data), end(int_data));
@@ -927,10 +1359,35 @@ static int TestAdaptors()
 		EATEST_VERIFY(reversed == original);
 	}
 
+	// reverse const lvalue container
+	{
+		int int_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+		const eastl::vector<int> original(begin(int_data), end(int_data));
+
+		eastl::vector<int> reversed;
+		for(auto& e : eastl::reverse(original))
+			reversed.push_back(e);
+
+		eastl::vector<int> reversed_original(original);
+		eastl::reverse(begin(reversed_original), end(reversed_original));
+		EATEST_VERIFY(reversed == reversed_original);
+	}
+
+	// reverse rvalue container
+	{
+		int int_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+		eastl::vector<int> original(begin(int_data), end(int_data));
+
+		eastl::vector<int> reversed;
+		for (auto& e : eastl::reverse(eastl::vector<int>(original)))
+			reversed.push_back(e);
+
+		eastl::reverse(begin(original), end(original));
+		EATEST_VERIFY(reversed == original);
+	}
+
 	return nErrorCount;
 }
-
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // TestExtra
@@ -947,6 +1404,10 @@ int TestExtra()
 	nErrorCount += TestCallTraits();
 	nErrorCount += TestNumeric();
 	nErrorCount += TestAdaptors();
+#if defined(EA_COMPILER_CPP20_ENABLED)
+	nErrorCount += TestMidpoint();
+#endif
+	nErrorCount += TestLerp();
 
 	return nErrorCount;
 }

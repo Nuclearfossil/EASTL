@@ -26,6 +26,38 @@ public:
 };
 typedef eastl::vector<AssetHandler> AssetHandlerArray;
 
+// Regression test for a default memory fill optimization that defers to memset instead of explicitly
+// value-initialization each element in a vector individually.  This test ensures that the value of the memset is
+// consistent with an explicitly value-initialized element (namely when the container holds a scalar value that is
+// memset to zero).
+template <typename T>
+int TestValueInitOptimization()
+{
+	int nErrorCount = 0;
+	const int ELEM_COUNT = 100;
+
+	{
+		eastl::vector<T> v1;
+		eastl::vector<ValueInitOf<T>> v2;
+
+		v1.resize(ELEM_COUNT);
+		v2.resize(ELEM_COUNT);
+
+		for (int i = 0; i < ELEM_COUNT; i++)
+			{ EATEST_VERIFY(v1[i] == v2[i].get()); }
+	}
+
+	{
+		eastl::vector<T> v1(ELEM_COUNT);
+		eastl::vector<ValueInitOf<T>> v2(ELEM_COUNT);
+
+		for (int i = 0; i < ELEM_COUNT; i++)
+			{ EATEST_VERIFY(v1[i] == v2[i].get()); }
+	}
+
+	EATEST_VERIFY(nErrorCount == 0);
+	return nErrorCount;
+}
 
 
 // LCTestObject
@@ -96,8 +128,27 @@ int64_t LCTestObject::sTOCtorCount = 0;
 int64_t LCTestObject::sTODtorCount = 0;
 
 
-eastl::late_constructed<LCTestObject, true>  gLCTestObjectTrue;
-eastl::late_constructed<LCTestObject, false> gLCTestObjectFalse;
+eastl::late_constructed<LCTestObject, true, true>  gLCTestObjectTrueTrue;
+eastl::late_constructed<LCTestObject, false, true> gLCTestObjectFalseTrue;
+eastl::late_constructed<LCTestObject, false, false> gLCTestObjectFalseFalse;
+eastl::late_constructed<LCTestObject, true, false> gLCTestObjectTrueFalse;
+
+struct TypeWithPointerTraits {};
+
+namespace eastl
+{
+	template <>
+	struct pointer_traits<TypeWithPointerTraits>
+	{
+		// Note: only parts of the traits we are interested to test are defined here.
+		static const int* to_address(TypeWithPointerTraits)
+		{
+			return &a;
+		}
+
+		inline static constexpr int a = 42;
+	};
+}
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,104 +162,196 @@ int TestMemory()
 
 	TestObject::Reset();
 
-	{
-		// get_temporary_buffer(ptrdiff_t n, size_t alignment, size_t alignmentOffset, char* pName);
-
-		pair<int*, ptrdiff_t> pr1 = get_temporary_buffer<int>(100, 1, 0, EASTL_NAME_VAL("Temp int array"));
-		memset(pr1.first, 0, 100 * sizeof(int));
-		return_temporary_buffer(pr1.first);
-
-		// Note that 
-		pair<TestObject*, ptrdiff_t> pr2 = get_temporary_buffer<TestObject>(300);
-		memset(pr2.first, 0, 300 * sizeof(TestObject));
-		return_temporary_buffer(pr2.first, pr2.second);
-	}
-
-	EATEST_VERIFY(TestObject::IsClear());
-	TestObject::Reset();
-
 
 	{
 		LCTestObject* pLCTO;
 
+		LCTestObject::sTOCount     = 0;
+		LCTestObject::sTOCtorCount = 0;
+		LCTestObject::sTODtorCount = 0;
+
 		// Verify alignment requirements.
-		// We don't verify that gLCTestObjectTrue.get() is aligned for all platforms because some platforms can't do that with global memory.
+		// We don't verify that gLCTestObjectTrueTrue.get() is aligned for all platforms because some platforms can't do that with global memory.
 		static_assert(eastl::alignment_of<typename late_constructed<LCTestObject>::value_type>::value == 64, "late_constructed alignment failure.");
 		static_assert(eastl::alignment_of<typename late_constructed<LCTestObject>::storage_type>::value == 64, "late_constructed alignment failure.");
 		static_assert(eastl::alignment_of<late_constructed<LCTestObject> >::value >= 64, "late_constructed alignment failure.");
 
 
-		// late_constructed / gLCTestObjectTrue 
+		// late_constructed / gLCTestObjectTrueTrue 
 		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
-		EATEST_VERIFY(!gLCTestObjectTrue.is_constructed());
+		EATEST_VERIFY(!gLCTestObjectTrueTrue.is_constructed());
 
-		pLCTO = gLCTestObjectTrue.get(); // This will auto-construct LCTestObject.
+		pLCTO = gLCTestObjectTrueTrue.get(); // This will auto-construct LCTestObject.
 		EATEST_VERIFY(pLCTO != NULL);
-		EATEST_VERIFY(gLCTestObjectTrue.is_constructed());
+		EATEST_VERIFY(gLCTestObjectTrueTrue.is_constructed());
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
 
-		gLCTestObjectTrue->mX = 17;
-		EATEST_VERIFY(gLCTestObjectTrue->mX == 17);
+		gLCTestObjectTrueTrue->mX = 17;
+		EATEST_VERIFY(gLCTestObjectTrueTrue->mX == 17);
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
 
-		gLCTestObjectTrue.destruct();
+		gLCTestObjectTrueTrue.destruct();
 		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 1));
-		EATEST_VERIFY(!gLCTestObjectTrue.is_constructed());
+		EATEST_VERIFY(!gLCTestObjectTrueTrue.is_constructed());
 
-		gLCTestObjectTrue->mX = 18;
-		EATEST_VERIFY(gLCTestObjectTrue->mX == 18);
-		EATEST_VERIFY(gLCTestObjectTrue.is_constructed());
+		gLCTestObjectTrueTrue->mX = 18;
+		EATEST_VERIFY(gLCTestObjectTrueTrue->mX == 18);
+		EATEST_VERIFY(gLCTestObjectTrueTrue.is_constructed());
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 2) && (LCTestObject::sTODtorCount == 1));
 
-		gLCTestObjectTrue.destruct();
-		(*gLCTestObjectTrue).mX = 19;
-		EATEST_VERIFY(gLCTestObjectTrue->mX == 19);
+		gLCTestObjectTrueTrue.destruct();
+		(*gLCTestObjectTrueTrue).mX = 19;
+		EATEST_VERIFY(gLCTestObjectTrueTrue->mX == 19);
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 3) && (LCTestObject::sTODtorCount == 2));
 
-		gLCTestObjectTrue.destruct();
+		gLCTestObjectTrueTrue.destruct();
 		LCTestObject::sTOCount     = 0;
 		LCTestObject::sTOCtorCount = 0;
 		LCTestObject::sTODtorCount = 0;
 
-		// late_constructed / gLCTestObjectFalse 
+		// late_constructed / gLCTestObjectFalseTrue 
 		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
-		EATEST_VERIFY(!gLCTestObjectFalse.is_constructed());
+		EATEST_VERIFY(!gLCTestObjectFalseTrue.is_constructed());
 
-		pLCTO = gLCTestObjectFalse.get(); // This will not auto-construct LCTestObject.
+		pLCTO = gLCTestObjectFalseTrue.get(); // This will not auto-construct LCTestObject.
 		EATEST_VERIFY(pLCTO == NULL);
-		EATEST_VERIFY(!gLCTestObjectFalse.is_constructed());
+		EATEST_VERIFY(!gLCTestObjectFalseTrue.is_constructed());
 		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
 
-		gLCTestObjectFalse.construct();
-		pLCTO = gLCTestObjectFalse.get();
+		gLCTestObjectFalseTrue.construct();
+		pLCTO = gLCTestObjectFalseTrue.get();
 		EATEST_VERIFY(pLCTO != NULL);
-		EATEST_VERIFY(gLCTestObjectFalse.is_constructed());
+		EATEST_VERIFY(gLCTestObjectFalseTrue.is_constructed());
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
 
-		gLCTestObjectFalse->mX = 17;
-		EATEST_VERIFY(gLCTestObjectFalse->mX == 17);
+		gLCTestObjectFalseTrue->mX = 17;
+		EATEST_VERIFY(gLCTestObjectFalseTrue->mX == 17);
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
 
-		gLCTestObjectFalse.destruct();
+		gLCTestObjectFalseTrue.destruct();
 		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 1));
-		EATEST_VERIFY(!gLCTestObjectFalse.is_constructed());
+		EATEST_VERIFY(!gLCTestObjectFalseTrue.is_constructed());
 
-		gLCTestObjectFalse.construct(14);
-		EATEST_VERIFY(gLCTestObjectFalse->mX == 14);
-		gLCTestObjectFalse->mX = 18;
-		EATEST_VERIFY(gLCTestObjectFalse->mX == 18);
-		EATEST_VERIFY(gLCTestObjectFalse.is_constructed());
+		gLCTestObjectFalseTrue.construct(14);
+		EATEST_VERIFY(gLCTestObjectFalseTrue->mX == 14);
+		gLCTestObjectFalseTrue->mX = 18;
+		EATEST_VERIFY(gLCTestObjectFalseTrue->mX == 18);
+		EATEST_VERIFY(gLCTestObjectFalseTrue.is_constructed());
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 2) && (LCTestObject::sTODtorCount == 1));
 
-		gLCTestObjectFalse.destruct();
-		gLCTestObjectFalse.construct(10, 20, 30);
-		EATEST_VERIFY(gLCTestObjectFalse->mX == 10+20+30);
-		(*gLCTestObjectFalse).mX = 19;
-		EATEST_VERIFY(gLCTestObjectFalse->mX == 19);
+		gLCTestObjectFalseTrue.destruct();
+		gLCTestObjectFalseTrue.construct(10, 20, 30);
+		EATEST_VERIFY(gLCTestObjectFalseTrue->mX == 10+20+30);
+		(*gLCTestObjectFalseTrue).mX = 19;
+		EATEST_VERIFY(gLCTestObjectFalseTrue->mX == 19);
 		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 3) && (LCTestObject::sTODtorCount == 2));
 
-		gLCTestObjectFalse.destruct();
+		gLCTestObjectFalseTrue.destruct();
 	}
+
+	{
+		LCTestObject* pLCTO;
+
+		LCTestObject::sTOCount     = 0;
+		LCTestObject::sTOCtorCount = 0;
+		LCTestObject::sTODtorCount = 0;
+
+		// Verify alignment requirements.
+		// We don't verify that gLCTestObjectTrueTrue.get() is aligned for all platforms because some platforms can't do that with global memory.
+		static_assert(eastl::alignment_of<typename late_constructed<LCTestObject>::value_type>::value == 64, "late_constructed alignment failure.");
+		static_assert(eastl::alignment_of<typename late_constructed<LCTestObject>::storage_type>::value == 64, "late_constructed alignment failure.");
+		static_assert(eastl::alignment_of<late_constructed<LCTestObject> >::value >= 64, "late_constructed alignment failure.");
+
+
+		// late_constructed / gLCTestObjectTrueFalse
+		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
+		EATEST_VERIFY(!gLCTestObjectTrueFalse.is_constructed());
+
+		pLCTO = gLCTestObjectTrueFalse.get(); // This will auto-construct LCTestObject.
+		EATEST_VERIFY(pLCTO != NULL);
+		EATEST_VERIFY(gLCTestObjectTrueFalse.is_constructed());
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
+
+		gLCTestObjectTrueFalse->mX = 17;
+		EATEST_VERIFY(gLCTestObjectTrueFalse->mX == 17);
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
+
+		gLCTestObjectTrueFalse.destruct();
+		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 1));
+		EATEST_VERIFY(!gLCTestObjectTrueFalse.is_constructed());
+
+		gLCTestObjectTrueFalse->mX = 18;
+		EATEST_VERIFY(gLCTestObjectTrueFalse->mX == 18);
+		EATEST_VERIFY(gLCTestObjectTrueFalse.is_constructed());
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 2) && (LCTestObject::sTODtorCount == 1));
+
+		gLCTestObjectTrueFalse.destruct();
+		(*gLCTestObjectTrueFalse).mX = 19;
+		EATEST_VERIFY(gLCTestObjectTrueFalse->mX == 19);
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 3) && (LCTestObject::sTODtorCount == 2));
+
+		gLCTestObjectTrueFalse.destruct();
+		LCTestObject::sTOCount     = 0;
+		LCTestObject::sTOCtorCount = 0;
+		LCTestObject::sTODtorCount = 0;
+
+		// late_constructed / gLCTestObjectFalseFalse
+		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
+		EATEST_VERIFY(!gLCTestObjectFalseFalse.is_constructed());
+
+		pLCTO = gLCTestObjectFalseFalse.get(); // This will not auto-construct LCTestObject.
+		EATEST_VERIFY(pLCTO == NULL);
+		EATEST_VERIFY(!gLCTestObjectFalseFalse.is_constructed());
+		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 0) && (LCTestObject::sTODtorCount == 0));
+
+		gLCTestObjectFalseFalse.construct();
+		pLCTO = gLCTestObjectFalseFalse.get();
+		EATEST_VERIFY(pLCTO != NULL);
+		EATEST_VERIFY(gLCTestObjectFalseFalse.is_constructed());
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
+
+		gLCTestObjectFalseFalse->mX = 17;
+		EATEST_VERIFY(gLCTestObjectFalseFalse->mX == 17);
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
+
+		gLCTestObjectFalseFalse.destruct();
+		EATEST_VERIFY((LCTestObject::sTOCount == 0) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 1));
+		EATEST_VERIFY(!gLCTestObjectFalseFalse.is_constructed());
+
+		gLCTestObjectFalseFalse.construct(14);
+		EATEST_VERIFY(gLCTestObjectFalseFalse->mX == 14);
+		gLCTestObjectFalseFalse->mX = 18;
+		EATEST_VERIFY(gLCTestObjectFalseFalse->mX == 18);
+		EATEST_VERIFY(gLCTestObjectFalseFalse.is_constructed());
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 2) && (LCTestObject::sTODtorCount == 1));
+
+		gLCTestObjectFalseFalse.destruct();
+		gLCTestObjectFalseFalse.construct(10, 20, 30);
+		EATEST_VERIFY(gLCTestObjectFalseFalse->mX == 10+20+30);
+		(*gLCTestObjectFalseFalse).mX = 19;
+		EATEST_VERIFY(gLCTestObjectFalseFalse->mX == 19);
+		EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 3) && (LCTestObject::sTODtorCount == 2));
+
+		gLCTestObjectFalseFalse.destruct();
+	}
+
+	LCTestObject::sTOCount     = 0;
+	LCTestObject::sTOCtorCount = 0;
+	LCTestObject::sTODtorCount = 0;
+	{
+		eastl::late_constructed<LCTestObject, true, false> lc;
+		lc.construct();
+	}
+	EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
+
+	LCTestObject::sTOCount     = 0;
+	LCTestObject::sTOCtorCount = 0;
+	LCTestObject::sTODtorCount = 0;
+	{
+		eastl::late_constructed<LCTestObject, false, false> lc;
+		lc.construct();
+	}
+	EATEST_VERIFY((LCTestObject::sTOCount == 1) && (LCTestObject::sTOCtorCount == 1) && (LCTestObject::sTODtorCount == 0));
 
 
 	// We use the vector container to supply a RandomAccessIterator.
@@ -220,74 +363,80 @@ int TestMemory()
 	// eastl::list<int>    intList;
 	// eastl::slist<int>   intSlist;
 
-	// template <typename ForwardIterator, typename ForwardIteratorDest>
-	// inline ForwardIteratorDest uninitialized_relocate_start(ForwardIterator first, ForwardIterator last, ForwardIteratorDest dest)
+	int* pEnd;
 
-	// template <typename ForwardIterator, typename ForwardIteratorDest>
-	// inline ForwardIteratorDest uninitialized_relocate_commit(ForwardIterator first, ForwardIterator last, ForwardIteratorDest dest)
+	{
+		// template <typename InputIterator, typename ForwardIterator>
+		// ForwardIterator uninitialized_copy(InputIterator sourceFirst, InputIterator sourceLast, ForwardIterator destination);
 
-	// template <typename ForwardIterator, typename ForwardIteratorDest>
-	// inline ForwardIteratorDest uninitialized_relocate_abort(ForwardIterator first, ForwardIterator last, ForwardIteratorDest dest)
+		pEnd = eastl::uninitialized_copy<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
+		EATEST_VERIFY(pEnd == NULL);
 
-	// template <typename ForwardIterator, typename ForwardIteratorDest>
-	// inline ForwardIteratorDest uninitialized_relocate(ForwardIterator first, ForwardIterator last, ForwardIteratorDest dest)
+		int intArray1[] = { 3, 2, 6, 5, 4, 1 };
+		int intArray2[] = { 1, 2, 3, 4, 5, 6 };
 
-	// This test does little more than verify that the code compiles.
-	int* pEnd = eastl::uninitialized_relocate_start<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
-	EATEST_VERIFY(pEnd == NULL);
+		uninitialized_copy(intArray2, intArray2 + 6, intArray1);
+		EATEST_VERIFY(VerifySequence(intArray1, intArray1 + 6, int(), "uninitialized_copy", 1, 2, 3, 4, 5, 6, -1));
 
-	pEnd = eastl::uninitialized_relocate_commit<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
-	EATEST_VERIFY(pEnd == NULL);
+		uninitialized_copy(eastl::move_iterator{ intArray2 }, eastl::move_iterator{ intArray2 + 6 }, intArray1);
+		EATEST_VERIFY(VerifySequence(intArray1, intArray1 + 6, int(), "uninitialized_copy", 1, 2, 3, 4, 5, 6, -1));
+	}
 
-	pEnd = eastl::uninitialized_relocate_abort<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
-	EATEST_VERIFY(pEnd == NULL);
+	{
+		// uninitialized_copy_n
 
-	pEnd = eastl::uninitialized_relocate<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
-	EATEST_VERIFY(pEnd == NULL);
-
-
-
-	// template <typename InputIterator, typename ForwardIterator>
-	// ForwardIterator uninitialized_copy(InputIterator sourceFirst, InputIterator sourceLast, ForwardIterator destination);
-
-	pEnd = eastl::uninitialized_copy<int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
-	EATEST_VERIFY(pEnd == NULL);
-
+		int intArray1[] = { 3, 2, 6, 5, 4, 1 };
+		int intArray2[] = { 1, 2, 3, 4, 5, 6 };
+		uninitialized_copy_n(intArray2, 6, intArray1);
+		EATEST_VERIFY(VerifySequence(intArray1, intArray1 + 6, int(), "uninitialized_copy_n", 1, 2, 3, 4, 5, 6, -1));
+	}
 
 
 	// template <typename First, typename Last, typename Result>
 	// Result uninitialized_copy_ptr(First first, Last last, Result result)
-
+	EASTL_INTERNAL_DISABLE_DEPRECATED() // '*': was declared deprecated
 	pEnd = eastl::uninitialized_copy_ptr<int*, int*, int*>((int*)NULL, (int*)NULL, (int*)NULL);
 	EATEST_VERIFY(pEnd == NULL);
+	EASTL_INTERNAL_RESTORE_DEPRECATED()
 
 
+	{
+		// template <typename ForwardIterator, typename T>
+		// void uninitialized_fill(ForwardIterator first, ForwardIterator last, const T& value)
 
-	// template <typename ForwardIterator, typename T>
-	// void uninitialized_fill(ForwardIterator first, ForwardIterator last, const T& value)
+		eastl::uninitialized_fill<int*, int>((int*)NULL, (int*)NULL, (int)0);
 
-	eastl::uninitialized_fill<int*, int>((int*)NULL, (int*)NULL, (int)0);
-
+		int intArray[] = { 3, 2, 6, 5, 4, 1 };
+		uninitialized_fill(intArray, intArray + 6, 4);
+		EATEST_VERIFY(VerifySequence(intArray, intArray + 6, int(), "uninitialized_fill", 4, 4, 4, 4, 4, 4, -1));
+	}
 
 
 	// template <typename T>
 	// void uninitialized_fill_ptr(T* first, T* last, const T& value)
-
+	EASTL_INTERNAL_DISABLE_DEPRECATED() // '*': was declared deprecated
 	eastl::uninitialized_fill_ptr<int>((int*)NULL, (int*)NULL, (int)0);
+	EASTL_INTERNAL_RESTORE_DEPRECATED()
 
 
+	{
+		// template <typename ForwardIterator, typename Count, typename T>
+		// void uninitialized_fill_n(ForwardIterator first, Count n, const T& value)
 
-	// template <typename ForwardIterator, typename Count, typename T>
-	// void uninitialized_fill_n(ForwardIterator first, Count n, const T& value)
+		eastl::uninitialized_fill_n<int*, int, int>((int*)NULL, (int)0, (int)0);
 
-	eastl::uninitialized_fill_n<int*, int, int>((int*)NULL, (int)0, (int)0);
-
+		int intArray[] = { 3, 2, 6, 5, 4, 1 };
+		uninitialized_fill_n(intArray, 6, 5);
+		EATEST_VERIFY(VerifySequence(intArray, intArray + 6, int(), "uninitialized_fill_n", 5, 5, 5, 5, 5, 5, -1));
+	}
 
 
 	// template <typename T, typename Count>
 	// void uninitialized_fill_n_ptr(T* first, Count n, const T& value)
 
+	EASTL_INTERNAL_DISABLE_DEPRECATED() // '*': was declared deprecated
 	eastl::uninitialized_fill_n_ptr<int, int>((int*)NULL, (int)0, (int)0);
+	EASTL_INTERNAL_RESTORE_DEPRECATED()
 
 
 
@@ -314,22 +463,186 @@ int TestMemory()
 
 	eastl::uninitialized_copy_copy<int*, int*, int*>((int*)NULL, (int*)NULL, (int*)NULL, (int*)NULL, (int*)NULL);
 
+	// uninitialized_default_construct
+	{
+		TestObject::Reset();
+		char testCharArray[sizeof(TestObject) * 10];
+		TestObject* pTestMemory = (TestObject*)(testCharArray);
 
+		eastl::uninitialized_default_construct(pTestMemory, pTestMemory + 10);
+		EATEST_VERIFY(TestObject::sTODefaultCtorCount == 10);
+	}
+
+	// uninitialized_default_construct_n
+	{
+		TestObject::Reset();
+		char testCharArray[sizeof(TestObject) * 10];
+		TestObject* pTestMemory = (TestObject*)(testCharArray);
+
+		auto endIter = eastl::uninitialized_default_construct_n(pTestMemory, 5);
+		EATEST_VERIFY(TestObject::sTODefaultCtorCount == 5);
+		EATEST_VERIFY(endIter == (pTestMemory + 5));
+	}
+
+	// uninitialized_value_construct
+	{
+		TestObject::Reset();
+		char testCharArray[sizeof(TestObject) * 10];
+		TestObject* pTestMemory = (TestObject*)(testCharArray);
+
+		eastl::uninitialized_value_construct(pTestMemory, pTestMemory + 10);
+		EATEST_VERIFY(TestObject::sTODefaultCtorCount == 10);
+
+		int intArray[] = { 3, 2, 6, 5, 4, 1 };
+		uninitialized_value_construct(intArray, intArray + 6);
+		EATEST_VERIFY(VerifySequence(intArray, intArray + 6, int(), "uninitialized_value_construct", 0, 0, 0, 0, 0, 0, -1));
+	}
+
+	// uninitialized_value_construct_n
+	{
+		TestObject::Reset();
+		char testCharArray[sizeof(TestObject) * 10];
+		TestObject* pTestMemory = (TestObject*)(testCharArray);
+
+		auto endIter = eastl::uninitialized_value_construct_n(pTestMemory, 5);
+		EATEST_VERIFY(TestObject::sTODefaultCtorCount == 5);
+		EATEST_VERIFY(endIter == (pTestMemory + 5));
+
+		int intArray[] = { 3, 2, 6, 5, 4, 1 };
+		uninitialized_value_construct_n(intArray, 6);
+		EATEST_VERIFY(VerifySequence(intArray, intArray + 6, int(), "uninitialized_value_construct_n", 0, 0, 0, 0, 0, 0, -1));
+	}
+
+	// Verify that uninitialized_value_construct does not do any additional initialization besides zero-initialization.
+	//
+	/// Value-Initialization:
+	//   If T is a class, the object is default-initialized (after being zero-initialized if T's default 
+	//   constructor is not user-provided/deleted); otherwise, the object is zero-initialized.
+	{
+		struct foo
+		{
+			// foo() = default; // intentionally removed to force zero-initialization behavior 
+			char mV;
+		};
+
+		static const int ARRAY_SIZE_IN_BYTES = sizeof(foo) * 10;
+
+		char testCharArray[ARRAY_SIZE_IN_BYTES];
+		EA::StdC::Memfill8(testCharArray, 42, ARRAY_SIZE_IN_BYTES);
+		foo* pTestMemory = (foo*)testCharArray;
+
+		eastl::uninitialized_value_construct(pTestMemory, pTestMemory + 10);
+
+		for (int i = 0; i < 10; i++)
+		{
+			EATEST_VERIFY(pTestMemory[i].mV == 0); // verify that memory is zero-initialized
+		}
+	}
+
+	// Verify that uninitialized_default_construct does not do any additional initialization besides the calling of a empty
+	// constructor.
+	//
+	// Default-initialization:
+	//  If T is a class, the default constructor is called; otherwise, no initialization is done, resulting in
+	//  indeterminate values.
+	{
+		struct foo
+		{
+			foo() {}  // default ctor intentionally a no-op
+			char mV;
+		};
+
+		static const int ARRAY_SIZE_IN_BYTES = sizeof(foo) * 10;
+
+		char testCharArray[ARRAY_SIZE_IN_BYTES];
+		EA::StdC::Memfill8(testCharArray, 42, ARRAY_SIZE_IN_BYTES);
+		foo* pTestMemory = (foo*)testCharArray;
+
+		eastl::uninitialized_default_construct(pTestMemory, pTestMemory + 10);
+
+		for (int i = 0; i < 10; i++)
+		{
+			EATEST_VERIFY(pTestMemory[i].mV == 42); // verify original memset value is intact 
+		}
+	}
+
+	{
+		// uninitialized_move
+
+		int intArray1[] = { 3, 2, 6, 5, 4, 1 };
+		int intArray2[] = { 1, 2, 3, 4, 5, 6 };
+
+		uninitialized_move(intArray2, intArray2 + 6, intArray1);
+		EATEST_VERIFY(VerifySequence(intArray1, intArray1 + 6, int(), "uninitialized_move", 1, 2, 3, 4, 5, 6, -1));
+	}
+
+	{
+		// uninitialized_move_n
+
+		int intArray1[] = { 3, 2, 6, 5, 4, 1 };
+		int intArray2[] = { 1, 2, 3, 4, 5, 6 };
+
+		uninitialized_move_n(intArray2, 6, intArray1);
+		EATEST_VERIFY(VerifySequence(intArray1, intArray1 + 6, int(), "uninitialized_move_n", 1, 2, 3, 4, 5, 6, -1));
+	}
 
 	// template <typename T>
 	// void destruct(T* p)
+	{
+		TestObject::Reset();
+		uint64_t testObjectMemory[((sizeof(TestObject) / sizeof(uint64_t)) + 1) * 2];
 
-	uint64_t testObjectMemory[((sizeof(TestObject) / sizeof(uint64_t)) + 1) * 2];
-	TestObject* pTestObject = new(testObjectMemory) TestObject;
-	destruct(pTestObject);
+		TestObject* pTestObject = new(testObjectMemory) TestObject;
+		destruct(pTestObject);
+		EATEST_VERIFY(TestObject::IsClear());
+	}
 
+	// template <typename T>
+	// void destroy_at(T* p)
+	{
+		TestObject::Reset();
+		uint64_t testObjectMemory[((sizeof(TestObject) / sizeof(uint64_t)) + 1) * 2];
+		TestObject* pTestObject = new(testObjectMemory) TestObject;
+		destroy_at(pTestObject);
+
+		EATEST_VERIFY(TestObject::IsClear());
+	}
 
 
 	// template <typename ForwardIterator>
 	// void destruct(ForwardIterator first, ForwardIterator last)
+	{
+		TestObject::Reset();
+		char testObjectMemory[sizeof(TestObject) * 3];
+		TestObject* pTestObject = new(testObjectMemory) TestObject[2];
+		destruct(pTestObject, pTestObject + 2);
 
-	pTestObject = new(testObjectMemory) TestObject[2];
-	destruct(pTestObject, pTestObject + 1);
+		EATEST_VERIFY(TestObject::IsClear());
+	}
+
+	// template <typename ForwardIterator>
+	// void destroy(ForwardIterator first, ForwardIterator last)
+	{
+		TestObject::Reset();
+		char testObjectMemory[sizeof(TestObject) * 3];
+		TestObject* pTestObject = new(testObjectMemory) TestObject[2];
+		destroy(pTestObject, pTestObject + 2);
+
+		EATEST_VERIFY(TestObject::IsClear());
+	}
+
+	// template <typename ForwardIterator, typename Size>
+	// void destroy_n(ForwardIterator first, Size n)
+	{
+		TestObject::Reset();
+		char testObjectMemory[sizeof(TestObject) * 3];
+		TestObject* pTestObject = new (testObjectMemory) TestObject[2];
+
+		destroy_n(pTestObject, 1);     // destroy TestObject[0]
+		destroy_n(pTestObject + 1, 1); // destroy TestObject[1]
+
+		EATEST_VERIFY(TestObject::IsClear());
+	}
 
 
 	{
@@ -406,6 +719,33 @@ int TestMemory()
 		}
 	}
 
+	// to_address
+	{
+		// Normal pointers.
+		int a;
+		int* ptrA = &a;
+		EATEST_VERIFY(ptrA == to_address(ptrA));
+
+		// Smart pointer.
+		struct MockSmartPointer
+		{
+			const int* operator->() const
+			{
+				return &a;
+			}
+
+			int a = 42;
+		};
+
+		MockSmartPointer sp;
+		EATEST_VERIFY(&sp.a == to_address(sp));
+
+		// Type with specialized pointer_traits.
+		TypeWithPointerTraits t;
+		const int* result = to_address(t);
+		EATEST_VERIFY(result != nullptr && *result == 42);
+	}
+
 	{
 		// Test that align handles integral overflow correctly and returns NULL.
 		void*  ptr;
@@ -415,21 +755,29 @@ int TestMemory()
 
 		space    = 64;
 		ptr      = 0;
-		ptr      = (char*)ptr - space;
+		ptr      = (void*)((uintptr_t)ptr - (uintptr_t)space);
 		ptrSaved = ptr;
 		pResult  = eastl::align(1, space + 1, ptr, space);             // Possible alignment, impossible size due to wraparound.
 		EATEST_VERIFY((pResult == NULL) && (ptr == ptrSaved));
 
 		space    = 64;
 		ptr      = 0;
-		ptr      = (char*)ptr - space;
+		ptr      = (void*)((uintptr_t)ptr - (uintptr_t)space);
 		ptrSaved = ptr;
 		pResult  = eastl::align(space * 2, 32, ptr, space);            // Impossible alignment due to wraparound, possible size.
 		EATEST_VERIFY((pResult == NULL) && (ptr == ptrSaved));
 	}
 
-	EATEST_VERIFY(nErrorCount == 0);
+	{
+		nErrorCount += TestValueInitOptimization<int>();
+		nErrorCount += TestValueInitOptimization<char>();
+		nErrorCount += TestValueInitOptimization<short>();
+		nErrorCount += TestValueInitOptimization<float>();
+		nErrorCount += TestValueInitOptimization<double>();
+		nErrorCount += TestValueInitOptimization<void*>();
+	}
 
+	EATEST_VERIFY(nErrorCount == 0);
 	return nErrorCount;
 }
 

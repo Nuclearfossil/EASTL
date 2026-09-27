@@ -5,8 +5,13 @@
 
 #include "EASTLTest.h"
 #include <EASTL/fixed_vector.h>
+#include <EASTL/unique_ptr.h>
 #include <EAStdC/EAMemory.h>
 #include <new>
+
+#if defined(EA_COMPILER_CPP17_ENABLED) && __has_include(<variant>)
+#include <variant> //Variant not present in older standards
+#endif
 
 
 using namespace eastl;
@@ -48,8 +53,6 @@ namespace
 
 int TestFixedVector()
 {
-	EASTLTest_Printf("TestFixedVector\n");
-
 	int nErrorCount = 0;
 
 	TestObject::Reset();
@@ -140,7 +143,8 @@ int TestFixedVector()
 		EATEST_VERIFY(fv88.capacity() >= (capacity * 2));
 
 		// void swap(this_type& x);
-		FixedVectorInt8 fv7(5, 3);
+		// FixedVectorInt8 fv7(5, 3);  // MSVC-ARM64 generated an internal compiler error on this line.
+		FixedVectorInt8 fv7 = {3, 3, 3, 3, 3};
 		FixedVectorInt8 fv8(intArray, intArray + 8);
 
 		swap(fv7, fv8);
@@ -214,11 +218,33 @@ int TestFixedVector()
 		// The variables used here are declared above in the global space.
 		vA64.insert(vA64.begin(), pA64, pA64 + 1);
 		EATEST_VERIFY(VerifySequence(vA64.begin(), vA64.end(), int(), "fixed_vector", 5, -1));
-		EATEST_VERIFY(((uintptr_t)&a64 % kEASTLTestAlign64) == 0);
-		EATEST_VERIFY(((uintptr_t)vA64.data() % kEASTLTestAlign64) == 0);
-		EATEST_VERIFY(((uintptr_t)&vA64[0] % kEASTLTestAlign64) == 0);
+		EATEST_VERIFY(((uintptr_t)&a64 % alignof(Align64)) == 0);
+		EATEST_VERIFY(((uintptr_t)vA64.data() % alignof(Align64)) == 0);
+		EATEST_VERIFY(((uintptr_t)&vA64[0] % alignof(Align64)) == 0);
 		EATEST_VERIFY(vA64.max_size() == 3);
 		EATEST_VERIFY(vA64.validate());
+	}
+
+	{
+		// push_back()
+
+		{
+#if EA_IS_ENABLED(EA_DEPRECATIONS_FOR_2025_OCT)
+			typedef eastl::fixed_vector<int, 128, false> FixedVector;
+			FixedVector v;
+			v.push_back(); // value initialized.
+			EATEST_VERIFY(v.back() == 0);
+#endif
+		}
+
+		{
+#if EA_IS_ENABLED(EA_DEPRECATIONS_FOR_2025_OCT)
+			typedef eastl::fixed_vector<int, 128, true> FixedVector;
+			FixedVector v;
+			v.push_back(); // value initialized.
+			EATEST_VERIFY(v.back() == 0);
+#endif
+		}
 	}
 
 
@@ -226,7 +252,8 @@ int TestFixedVector()
 		// Test for potential bug reported Sep. 19, 2006.
 		typedef eastl::fixed_vector<void*, 160, false> FixedVector;
 		FixedVector v;
-		int* p = (int*)(uintptr_t)0;
+		int arr[100] = {};
+		int* p = arr;
 
 		for(int i = 0; i < 100; i++, p++)
 			v.push_back(p);
@@ -493,20 +520,173 @@ int TestFixedVector()
 		EATEST_VERIFY(test.validate());
 
 		test.set_capacity(0);    // "Does nothing currently."
-		EATEST_VERIFY(test.capacity() == 0);
+		EATEST_VERIFY(test.capacity() == 1);
 		EATEST_VERIFY(test.validate());
 
 	}   // "Crash here."
 
-	return nErrorCount;     
+	{
+		const int FV_SIZE = 100;
+		fixed_vector<unique_ptr<unsigned int>, FV_SIZE> fvmv1; // to move via move assignment operator
+		fixed_vector<unique_ptr<unsigned int>, FV_SIZE> fvmv2; // to move via move copy constructor
+
+		for (unsigned int i = 0; i < FV_SIZE; ++i) // populate fvmv1
+			fvmv1.push_back(make_unique<unsigned int>(i));
+
+		fvmv2 = eastl::move(fvmv1); // Test move assignment operator
+
+		for (unsigned int i = 0; i < FV_SIZE; ++i)
+		{
+			EATEST_VERIFY(!fvmv1[i]);
+			EATEST_VERIFY(*fvmv2[i] == i);
+		}
+		EATEST_VERIFY(fvmv2.validate());
+		
+		swap(fvmv1, fvmv2); // Test swap with move-only objects
+		for (unsigned int i = 0; i < FV_SIZE; ++i)
+		{
+			EATEST_VERIFY(*fvmv1[i] == i);
+			EATEST_VERIFY(!fvmv2[i]);
+		}
+		EATEST_VERIFY(fvmv1.validate());
+		EATEST_VERIFY(fvmv2.validate());
+
+		fixed_vector<unique_ptr<unsigned int>, FV_SIZE> fvmv3 = eastl::move(fvmv1); // Test move copy constructor
+		for (unsigned int i = 0; i < FV_SIZE; ++i)
+		{
+			EATEST_VERIFY(!fvmv1[i]);
+			EATEST_VERIFY(*fvmv3[i] == i);
+		}
+		EATEST_VERIFY(fvmv3.validate());
+
+		fixed_vector<unique_ptr<unsigned int>, FV_SIZE> fvmv4{eastl::move(fvmv3), fvmv3.get_overflow_allocator()};
+		for (unsigned int i = 0; i < FV_SIZE; ++i)
+		{
+			EATEST_VERIFY(!fvmv3[i]);
+			EATEST_VERIFY(*fvmv4[i] == i);
+		}
+		EATEST_VERIFY(fvmv4.validate());
+
+		fvmv4.push_back(make_unique<unsigned int>(FV_SIZE));
+		EATEST_VERIFY(fvmv4.has_overflowed());
+
+		fixed_vector<unique_ptr<unsigned int>, FV_SIZE> fvmv5{eastl::move(fvmv4), fvmv4.get_overflow_allocator()};
+		for (unsigned int i = 0; i <= FV_SIZE; ++i)
+		{
+			EATEST_VERIFY(!fvmv4[i]);
+			EATEST_VERIFY(*fvmv5[i] == i);
+		}
+		EATEST_VERIFY(fvmv5.validate());
+		EATEST_VERIFY(fvmv5.has_overflowed());
+	}
+
+	{ // Test that ensures that move ctor that triggers realloc (e.g. > capacity) does so via move code path
+		eastl::fixed_vector<TestObject, 1, true> fv1;
+		fv1.push_back(TestObject(0));
+		fv1.push_back(TestObject(0));
+		int64_t copyCtorCount0 = TestObject::sTOCopyCtorCount, moveCtorCount0 = TestObject::sTOMoveCtorCount;
+		decltype(fv1) fv2 = eastl::move(fv1);
+		EATEST_VERIFY(TestObject::sTOCopyCtorCount == copyCtorCount0 && TestObject::sTOMoveCtorCount == (moveCtorCount0 + 2));
+	}
+	{ // Same as above but with custom statefull allocator
+		struct MyAlloc : public eastl::allocator
+		{
+			MyAlloc()=default;
+			MyAlloc(int i) : dummy(i) {}
+			int dummy;
+		};
+		eastl::fixed_vector<TestObject, 1, true, MyAlloc> fv1;
+		fv1.push_back(TestObject(0));
+		fv1.push_back(TestObject(0));
+		int64_t copyCtorCount0 = TestObject::sTOCopyCtorCount, moveCtorCount0 = TestObject::sTOMoveCtorCount;
+		decltype(fv1) fv2(eastl::move(fv1), MyAlloc(123));
+		EATEST_VERIFY(TestObject::sTOCopyCtorCount == copyCtorCount0 && TestObject::sTOMoveCtorCount == (moveCtorCount0 + 2));
+		EATEST_VERIFY(fv2.get_overflow_allocator().dummy == 123);
+	}
+
+	#if defined(EA_COMPILER_CPP17_ENABLED) && __has_include(<variant>)
+	//Test pairing of std::variant with fixed_vector
+	{
+		eastl::fixed_vector<std::variant<int>, 4> v;
+		eastl::fixed_vector<std::variant<int>, 4> b = eastl::move(v);
+	}
+	#endif
+
+	// eastl::erase / eastl::erase_if tests
+	{
+		{
+			eastl::fixed_vector<int, 5> v = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+			auto numErased = eastl::erase(v, 5);
+			VERIFY((v == eastl::fixed_vector<int, 5> {1, 2, 3, 4, 6, 7, 8, 9}));
+			VERIFY(numErased == 1);
+
+			numErased = eastl::erase(v, 2);
+			VERIFY((v == eastl::fixed_vector<int, 5> {1, 3, 4, 6, 7, 8, 9}));
+			VERIFY(numErased == 1);
+
+			numErased = eastl::erase(v, 9);
+			VERIFY((v == eastl::fixed_vector<int, 5> {1, 3, 4, 6, 7, 8}));
+			VERIFY(numErased == 1);
+		}
+
+		{
+			eastl::fixed_vector<int, 15> v = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+			auto numErased = eastl::erase_if(v, [](auto i) { return i % 2 == 0; });
+			VERIFY((v == eastl::fixed_vector<int, 15>{1, 3, 5, 7, 9}));
+			VERIFY(numErased == 4);
+		}
+	}
+
+	// Tests for erase_unordered
+	{
+		{
+			eastl::fixed_vector<int, 5> vec = {0, 1, 2, 3};
+			auto numErased = eastl::erase_unsorted(vec, 1);
+			EATEST_VERIFY(numErased == 1);
+			EATEST_VERIFY(VerifySequence(vec, {0, 3, 2}, "erase_unordered") );
+		}
+		{
+			eastl::fixed_vector<int, 5> vec = {};
+			auto numErased = eastl::erase_unsorted(vec, 42);
+			EATEST_VERIFY(numErased == 0);
+			EATEST_VERIFY(vec.size() == 0);
+		}
+		// The following test checks that the correct implementation is called for fixed_vector by checking the order
+		// of the remaining values. It is not a strict requirement that they have this order but it
+		// is expected to be the result based on that it minimizes the amount of work.
+		{
+			eastl::fixed_vector<int, 5> vec = {0, 1, 2, 3, 1, 5, 6, 1, 8, 9};
+			auto numErased = eastl::erase_unsorted(vec, 1);
+			EATEST_VERIFY(numErased == 3);
+			EATEST_VERIFY(VerifySequence(vec, {0, 9, 2, 3, 8, 5, 6}, "erase_unordered") );
+		}
+	}
+
+	// Tests for erase_unordered_if
+	{
+		{
+			eastl::fixed_vector<int, 5> vec = {0, 1, 2, 3};
+			auto numErased = eastl::erase_unsorted_if(vec, [](const int& v) { return v % 2 == 1; });
+			EATEST_VERIFY(numErased == 2);
+			EATEST_VERIFY(VerifySequence(vec, {0, 2}, "erase_unordered_if") );
+		}
+		{
+			eastl::fixed_vector<int, 5> vec = {};
+			auto numErased = eastl::erase_unsorted_if(vec, [](const int& v) { return v % 2 == 1; });
+			EATEST_VERIFY(numErased == 0);
+			EATEST_VERIFY(vec.size() == 0);
+		}
+		// The following test checks that the correct implementation is called for fixed_vector by checking the order
+		// of the remaining values. It is not a strict requirement that they have this order but it
+		// is expected to be the result based on that it minimizes the amount of work.
+		{
+			eastl::fixed_vector<int, 5> vec = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+			auto numErased = eastl::erase_unsorted_if(vec, [](const int& v) { return v % 2 == 1; });
+			EATEST_VERIFY(numErased == 5);
+			EATEST_VERIFY(VerifySequence(vec, {0, 8, 2, 6, 4}, "erase_unordered_if") );
+		}
+	}
+	return nErrorCount;
 }
-
-
-
-
-
-
-
-
-
 

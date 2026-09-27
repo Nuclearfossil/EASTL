@@ -21,7 +21,6 @@ int TestDuration()
 {
 	int nErrorCount = 0;
 
-#if !(defined(_MSC_VER) && (_MSC_VER < 1900))  // all platforms except VS2013 and below...
 	{
 		hours h{1}; // 1 hour
 		milliseconds ms{3}; // 3 milliseconds
@@ -31,12 +30,12 @@ int TestDuration()
 		microseconds us = ms; 
 		duration<double, milli> ms2 = us; // 3.0 milliseconds
 
+		EA_UNUSED(h);
 		EA_UNUSED(ms2);
 		EA_UNUSED(ks);
 		EA_UNUSED(hz30);
 		EA_UNUSED(us);
 	}
-#endif
 
 	{
 		typedef duration<double, ratio<1, 30>> dur_t;
@@ -90,12 +89,15 @@ int TestDuration()
 
 			microseconds us = 2 * ms; // 6000 microseconds constructed from 3 milliseconds
 			VERIFY(us.count() == 6000);
+			
+			microseconds us2 = ms * 2; // 6000 microseconds constructed from 3 milliseconds
+			VERIFY(us2.count() == 6000);
 
-			microseconds us2 = us / 2;
-			VERIFY(us2.count() == 3000);
+			microseconds us3 = us / 2;
+			VERIFY(us3.count() == 3000);
 
-			microseconds us3 = us % 2;
-			VERIFY(us3.count() == 0);
+			microseconds us4 = us % 2;
+			VERIFY(us4.count() == 0);
 		}
 	}
 
@@ -202,7 +204,6 @@ int TestClocks()
 int TestChrono()
 {
 	int nErrorCount = 0;
-	EASTLTest_Printf("TestChrono\n");
 	nErrorCount += TestDuration();
 	nErrorCount += TestTimePoint();
 	nErrorCount += TestClocks();

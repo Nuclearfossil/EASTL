@@ -13,22 +13,13 @@
 #include <EASTL/fixed_string.h>
 #include <EASTL/fixed_vector.h>
 #include <EASTL/utility.h>
+#include "TestAssociativeContainers.h"
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable: 4702) // VC++ STL headers generate this. warning C4702: unreachable code
-	#pragma warning(disable:4350) // for whatever reason, the push,0 above does not turn this warning off with vs2012.
-								  // VC++ 2012 STL headers generate this. warning C4350: behavior change: 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc(const std::_Wrap_alloc<_Alloc> &) throw()' called instead of 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc<std::_Wrap_alloc<_Alloc>>(_Other &) throw()'
-#endif
-
+EA_DISABLE_ALL_VC_WARNINGS()
 #ifndef EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 	#include <map>
 #endif
-
-#if defined(_MSC_VER)
-	#pragma warning(pop)
-#endif
-
+EA_RESTORE_ALL_VC_WARNINGS()
 
 using namespace eastl;
 
@@ -50,11 +41,17 @@ typedef eastl::vector_map<int, int, eastl::less<int>, EASTLAllocatorType, eastl:
 typedef eastl::vector_map<TestObject, TestObject> VM4;
 typedef eastl::vector_map<TestObject, TestObject, eastl::less<TestObject>, EASTLAllocatorType, eastl::deque<eastl::pair<TestObject, TestObject> > > VM5;
 
+static_assert(sizeof(eastl::vector_map<int, int>) == sizeof(eastl::vector<int>), "if is_empty_v<Compare>, sizeof(vector_map) == sizeof(RandomAccessContainer)");
+static_assert(sizeof(eastl::vector_map<double, double>) == sizeof(eastl::vector<double>), "if is_empty_v<Compare>, sizeof(vector_map) == sizeof(RandomAccessContainer)");
+
 typedef eastl::vector_multimap<int, int> VMM1;
 typedef eastl::vector_multimap<int, int, eastl::less<int>, EASTLAllocatorType, eastl::deque<eastl::pair<int, int> > > VMM2;
 
 typedef eastl::vector_multimap<TestObject, TestObject> VMM4;
 typedef eastl::vector_multimap<TestObject, TestObject, eastl::less<TestObject>, EASTLAllocatorType, eastl::deque<eastl::pair<TestObject, TestObject> > > VMM5;
+
+static_assert(sizeof(eastl::vector_multimap<int, int>) == sizeof(eastl::vector<eastl::pair<int, int>>), "if is_empty_v<Compare>, sizeof(vector_multimap) == sizeof(RandomAccessContainer)");
+static_assert(sizeof(eastl::vector_multimap<TestObject, TestObject>) == sizeof(eastl::vector<eastl::pair<TestObject, TestObject>>), "if is_empty_v<Compare>, sizeof(vector_multimap) == sizeof(RandomAccessContainer)");
 
 #ifndef EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 	typedef std::map<int, int> VM3;
@@ -64,12 +61,28 @@ typedef eastl::vector_multimap<TestObject, TestObject, eastl::less<TestObject>, 
 #endif
 ///////////////////////////////////////////////////////////////////////////////
 
+template <typename T1>
+int TestVectorMapAtKey()
+{
+	int nErrorCount = 0;
 
+	typedef T1 TOMap;
+	typedef typename TOMap::key_type key_type;
+	typedef typename TOMap::mapped_type mapped_type;
+
+	TOMap map1;
+	map1[key_type(1)] = mapped_type(1);
+	map1[key_type(3)] = mapped_type(3);
+	map1[key_type(0)] = mapped_type(1);
+	EATEST_VERIFY(map1.at_key(key_type(0)) == mapped_type(1));
+	EATEST_VERIFY(map1.at_key(key_type(1)) == mapped_type(1));
+	EATEST_VERIFY(map1.at_key(key_type(3)) == mapped_type(3));
+
+	return nErrorCount;
+}
 
 int TestVectorMap()
 {
-	EASTLTest_Printf("TestVectorMap\n");
-
 	int nErrorCount = 0;
 
 	#ifndef EA_COMPILER_NO_STANDARD_CPP_LIBRARY
@@ -78,11 +91,13 @@ int TestVectorMap()
 			nErrorCount += TestMapConstruction<VM2, VM3, false>();
 			nErrorCount += TestMapConstruction<VM4, VM6, false>();
 			nErrorCount += TestMapConstruction<VM5, VM6, false>();
+			nErrorCount += TestMapConstruction<eastl::vector_map<int, int, eastl::less<void>>, std::map<int, int>, false>();
 
 			nErrorCount += TestMapConstruction<VMM1, VMM3, true>();
 			nErrorCount += TestMapConstruction<VMM2, VMM3, true>();
 			nErrorCount += TestMapConstruction<VMM4, VMM6, true>();
 			nErrorCount += TestMapConstruction<VMM5, VMM6, true>();
+			nErrorCount += TestMapConstruction<eastl::vector_multimap<int, int, eastl::less<void>>, std::multimap<int, int>, true>();
 		}
 
 
@@ -91,11 +106,13 @@ int TestVectorMap()
 			nErrorCount += TestMapMutation<VM2, VM3, false>();
 			nErrorCount += TestMapMutation<VM4, VM6, false>();
 			nErrorCount += TestMapMutation<VM5, VM6, false>();
+			nErrorCount += TestMapMutation<eastl::vector_map<int, int, eastl::less<void>>, std::map<int, int>, false>();
 
 			nErrorCount += TestMapMutation<VMM1, VMM3, true>();
 			nErrorCount += TestMapMutation<VMM2, VMM3, true>();
 			nErrorCount += TestMapMutation<VMM4, VMM6, true>();
 			nErrorCount += TestMapMutation<VMM5, VMM6, true>();
+			nErrorCount += TestMapMutation<eastl::vector_multimap<int, int, eastl::less<void>>, std::multimap<int, int>, true>();
 		}
 	#endif // EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 
@@ -105,11 +122,13 @@ int TestVectorMap()
 		nErrorCount += TestMapSearch<VM2, false>();
 		nErrorCount += TestMapSearch<VM4, false>();
 		nErrorCount += TestMapSearch<VM5, false>();
+		nErrorCount += TestMapSearch<eastl::vector_map<int, int, eastl::less<void>>, false>();
 
 		nErrorCount += TestMapSearch<VMM1, true>();
 		nErrorCount += TestMapSearch<VMM2, true>();
 		nErrorCount += TestMapSearch<VMM4, true>();
 		nErrorCount += TestMapSearch<VMM5, true>();
+		nErrorCount += TestMapSearch<eastl::vector_multimap<int, int, eastl::less<void>>, true>();
 	}
 
 
@@ -117,10 +136,36 @@ int TestVectorMap()
 		// C++11 emplace and related functionality
 		nErrorCount += TestMapCpp11<eastl::vector_map<int, TestObject> >();
 		nErrorCount += TestMapCpp11<eastl::vector_map<int, TestObject, eastl::less<int>, EASTLAllocatorType, eastl::deque<eastl::pair<int, TestObject> > > >();
+		nErrorCount += TestMapCpp11<eastl::vector_map<int, TestObject, eastl::less<void>>>();
 
 		nErrorCount += TestMultimapCpp11<eastl::vector_multimap<int, TestObject> >();
 		nErrorCount += TestMultimapCpp11<eastl::vector_multimap<int, TestObject, eastl::less<int>, EASTLAllocatorType, eastl::deque<eastl::pair<int, TestObject> > > >();
+		nErrorCount += TestMultimapCpp11<eastl::vector_multimap<int, TestObject, eastl::less<void>> >();
 	}
+
+	{
+		// Tests for element access: operator[] and at()
+		
+		// todo: can't enable these tests until the current at() function is removed (which gets by index rather than by key) and we can replace with a semanticly correct one.
+		
+		//nErrorCount += TestMapAccess<VM1>();
+		//nErrorCount += TestMapAccess<VM2>();
+		//nErrorCount += TestMapAccess<VM4>();
+		//nErrorCount += TestMapAccess<VM5>();
+		//nErrorCount += TestMapHeterogeneousAccess<eastl::vector_map<ExplicitString, int, eastl::less<void>>>();
+		 
+		nErrorCount += TestVectorMapAtKey<VM1>();
+		nErrorCount += TestVectorMapAtKey<VM2>();
+		nErrorCount += TestVectorMapAtKey<VM4>();
+		nErrorCount += TestVectorMapAtKey<VM5>();
+		nErrorCount += TestVectorMapAtKey<eastl::vector_map<int, TestObject, eastl::less<void>>>();
+	}
+
+    {
+        // insert at the upper bound of a range
+        VMM1 vmm = {{0, 0}};
+        VERIFY(vmm.emplace(0, 0) != vmm.begin());
+    }
 
 
 	{ // Misc tests
@@ -160,8 +205,8 @@ int TestVectorMap()
 
 	{
 		// Misc testing
-		typedef eastl::fixed_string<char8_t, 16>   KeyStringType;
-		typedef eastl::fixed_string<char8_t, 24>   ValueStringType;
+		typedef eastl::fixed_string<char, 16>   KeyStringType;
+		typedef eastl::fixed_string<char, 24>   ValueStringType;
 		typedef eastl::pair<ValueStringType, bool> StringMapValueType;
 
 		typedef eastl::vector_map<KeyStringType, StringMapValueType> StringMapType;
@@ -194,6 +239,85 @@ int TestVectorMap()
 		tvm["RamCacheInfo"]    = NULL;
 		tvm["SSLCert"]         = NULL;
 		tvm["AllowedDomain"]   = NULL;
+	}
+
+	{     // find / find_as / lower_bound / upper_bound
+		{ // vector_map
+			eastl::vector_map<string, int> vss = {{"abc", 11},   {"def", 22}, {"ghi", 33}, {"jklmnop", 44},
+												  {"qrstu", 55}, {"vw", 66},  {"x", 77},   {"yz", 88}};
+			VERIFY(vss.find("ghi") != vss.end());
+			VERIFY(vss.find_as("GHI", TestStrCmpI_2()) != vss.end());
+			VERIFY(vss.lower_bound("ghi") != vss.end());
+			VERIFY(vss.upper_bound("ghi") != vss.end());
+		}
+
+		{ // const vector_map
+			const eastl::vector_map<string, int> vss = {{"abc", 11},   {"def", 22}, {"ghi", 33}, {"jklmnop", 44},
+														{"qrstu", 55}, {"vw", 66},  {"x", 77},   {"yz", 88}};
+			VERIFY(vss.find("ghi") != vss.end());
+			VERIFY(vss.find_as("GHI", TestStrCmpI_2()) != vss.end());
+			VERIFY(vss.lower_bound("ghi") != vss.end());
+			VERIFY(vss.upper_bound("ghi") != vss.end());
+		}
+
+		// vector_multimap
+		{
+			eastl::vector_multimap<string, int> vss = {{"abc", 11},   {"def", 22}, {"ghi", 33}, {"jklmnop", 44},
+													   {"qrstu", 55}, {"vw", 66},  {"x", 77},   {"yz", 88}};
+			VERIFY(vss.find_as("GHI", TestStrCmpI_2()) != vss.end());
+		}
+
+		// const vector_multimap
+		{
+			const eastl::vector_multimap<string, int> vss = {{"abc", 11},   {"def", 22}, {"ghi", 33}, {"jklmnop", 44},
+															 {"qrstu", 55}, {"vw", 66},  {"x", 77},   {"yz", 88}};
+			VERIFY(vss.find_as("GHI", TestStrCmpI_2()) != vss.end());
+		}
+	}
+
+	{ // heterogenous functions - vector_map
+		eastl::vector_map<ExplicitString, int, eastl::less<void>> m{ { ExplicitString::Create("found"), 1 } };
+		nErrorCount += TestAssociativeContainerHeterogeneousLookup(m);
+		nErrorCount += TestOrderedAssociativeContainerHeterogeneousLookup(m);
+		nErrorCount += TestAssociativeContainerHeterogeneousErasure(m);
+	}
+
+	{ // heterogenous insertion - vector_map
+		// Ideally would use TestMapHeterogeneousInsertion<T>() instead of this test, but
+		//   - we are missing try_emplace and insert_or_assign
+		//   - at(size_type) needs to be removed and at_key() should be renamed to at()
+
+		eastl::vector_map<ExplicitString, int, eastl::less<void>> m;
+
+		// insert:
+		m["0"] = 1;
+		m["1"] = 1;
+		m["3"] = 3;
+
+		ExplicitString::Reset();
+
+		// no construction of key_type:
+
+		EATEST_VERIFY(m["0"] == 1);
+		EATEST_VERIFY(m["1"] == 1);
+		EATEST_VERIFY(m["3"] == 3);
+
+		EATEST_VERIFY(m.at_key("0") == 1);
+		EATEST_VERIFY(m.at_key("1") == 1);
+		EATEST_VERIFY(m.at_key("3") == 3);
+
+		VERIFY(ExplicitString::sCtorFromStrCount == 0);
+	}
+
+	{ // heterogenous functions - vector_multimap
+		eastl::vector_multimap<ExplicitString, int, eastl::less<void>> m{ { ExplicitString::Create("found"), 1 } };
+		nErrorCount += TestAssociativeContainerHeterogeneousLookup(m);
+		nErrorCount += TestOrderedAssociativeContainerHeterogeneousLookup(m);
+
+		VERIFY(m.equal_range_small("not found") == eastl::make_pair(m.lower_bound("not found"), m.upper_bound("not found")));
+		VERIFY(m.equal_range_small("found") == eastl::make_pair(m.lower_bound("found"), m.upper_bound("found")));
+
+		nErrorCount += TestAssociativeContainerHeterogeneousErasure(m);
 	}
 
 	return nErrorCount;

@@ -17,19 +17,14 @@
 #include <EASTL/string.h>
 #include <EASTL/random.h>
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable: 4350) // behavior change: X called instead of Y
-#endif
+EA_DISABLE_ALL_VC_WARNINGS()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
 #include <vector>
 #include <list>
 #include <algorithm>
-#ifdef _MSC_VER
-	#pragma warning(pop)
-#endif
+EA_RESTORE_ALL_VC_WARNINGS()
 
 #ifdef _MSC_VER
 	#pragma warning(disable: 4996) // Function call with parameters that may be unsafe
@@ -71,13 +66,20 @@ namespace std__
 
 namespace
 {
+	// Exists for the purpose testing PODs that are larger than built-in types.
+	template <size_t kSize>
+	struct SizedPOD
+	{
+		char memory[kSize];
+	};
+
 	void TestFindEndStd(EA::StdC::Stopwatch& stopwatch, const std::string& sTest, const char* pSearchStringBegin, const char* pSearchStringEnd)
 	{
 		stopwatch.Restart();
 		std::string::const_iterator it = std::find_end(sTest.begin(), sTest.end(), pSearchStringBegin, pSearchStringEnd);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 	void TestFindEndEa(EA::StdC::Stopwatch& stopwatch, const eastl::string& sTest, const char* pSearchStringBegin, const char* pSearchStringEnd)
@@ -86,7 +88,7 @@ namespace
 		eastl::string::const_iterator it = eastl::find_end(sTest.begin(), sTest.end(), pSearchStringBegin, pSearchStringEnd);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 
@@ -97,7 +99,7 @@ namespace
 		std::string::const_iterator it = std::search(sTest.begin(), sTest.end(), pSearchStringBegin, pSearchStringEnd);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 	void TestSearchEa(EA::StdC::Stopwatch& stopwatch, const eastl::string& sTest, const char* pSearchStringBegin, const char* pSearchStringEnd)
@@ -106,7 +108,7 @@ namespace
 		eastl::string::const_iterator it = eastl::search(sTest.begin(), sTest.end(), pSearchStringBegin, pSearchStringEnd);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 
@@ -117,7 +119,7 @@ namespace
 		std::string::const_iterator it = std::search_n(sTest.begin(), sTest.end(), n, c);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 	void TestSearchNEa(EA::StdC::Stopwatch& stopwatch, const eastl::string& sTest, int n, char c)
@@ -126,7 +128,7 @@ namespace
 		eastl::string::const_iterator it = eastl::search_n(sTest.begin(), sTest.end(), n, c);
 		stopwatch.Stop();
 		if(it != sTest.end())
-			sprintf(Benchmark::gScratchBuffer, "%c", *it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%c", *it);
 	}
 
 
@@ -157,7 +159,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::const_iterator it = std::min_element(c.begin(), c.end());
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &it);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &it);
 	}
 
 	template <typename Container>
@@ -166,7 +168,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::const_iterator it = eastl::min_element(c.begin(), c.end());
 		stopwatch.Stop();        
-		sprintf(Benchmark::gScratchBuffer, "%p", &it);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &it);
 	}
 
 
@@ -177,7 +179,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::difference_type n = std::count(c.begin(), c.end(), (typename Container::value_type)999999);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)n);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)n);
 	}
 
 	template <typename Container>
@@ -186,7 +188,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::difference_type n = eastl::count(c.begin(), c.end(), (typename Container::value_type)999999);
 		stopwatch.Stop();        
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)n);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)n);
 	}
 
 
@@ -197,7 +199,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::const_iterator it = std::adjacent_find(c.begin(), c.end());
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &it);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &it);
 	}
 
 	template <typename Container>
@@ -206,27 +208,7 @@ namespace
 		stopwatch.Restart();
 		const typename Container::const_iterator it = eastl::adjacent_find(c.begin(), c.end());
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &it);
-	}
-
-
-
-	template <typename Container>
-	void TestRandomShuffleStd(EA::StdC::Stopwatch& stopwatch, Container& c, EASTLTest_Rand rng) // Intentionally passed by value instead of by reference. We want both functions here to have the same rng.
-	{
-		stopwatch.Restart();
-		std::random_shuffle(c.begin(), c.end(), rng);
-		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)c.front());
-	}
-
-	template <typename Container>
-	void TestRandomShuffleEa(EA::StdC::Stopwatch& stopwatch, Container& c, EASTLTest_Rand rng)
-	{
-		stopwatch.Restart();
-		eastl::random_shuffle(c.begin(), c.end(), rng);
-		stopwatch.Stop();        
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)c.front());
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &it);
 	}
 
 
@@ -319,7 +301,7 @@ namespace
 		stopwatch.Restart();
 		const bool bResult = std::lexicographical_compare(first1, last1, first2, last2);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", bResult ? (int)1 : (int)0);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", bResult ? (int)1 : (int)0);
 	}
 
 	template <typename Iterator1, typename Iterator2>
@@ -328,7 +310,7 @@ namespace
 		stopwatch.Restart();
 		const bool bResult = eastl::lexicographical_compare(first1, last1, first2, last2);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", bResult ? (int)1 : (int)0);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", bResult ? (int)1 : (int)0);
 	}
 
 
@@ -339,7 +321,7 @@ namespace
 		stopwatch.Restart();
 		std::copy(first, last, result);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)*first);
 	}
 
 	template <typename Iterator, typename OutputIterator>
@@ -348,7 +330,7 @@ namespace
 		stopwatch.Restart();
 		eastl::copy(first, last, result);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)*first);
 	}
 
 
@@ -359,7 +341,7 @@ namespace
 		stopwatch.Restart();
 		std::copy_backward(first, last, result);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)*first);
 	}
 
 	template <typename Iterator, typename OutputIterator>
@@ -368,7 +350,7 @@ namespace
 		stopwatch.Restart();
 		eastl::copy_backward(first, last, result);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%d", (int)*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%d", (int)*first);
 	}
 
 
@@ -379,7 +361,7 @@ namespace
 		stopwatch.Restart();
 		std::fill(first, last, v);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 	template <typename Iterator, typename Value>
@@ -388,7 +370,7 @@ namespace
 		stopwatch.Restart();
 		eastl::fill(first, last, v);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 
@@ -399,7 +381,7 @@ namespace
 		stopwatch.Restart();
 		std::fill_n(first, n, v);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 	template <typename Iterator, typename Value>
@@ -408,7 +390,7 @@ namespace
 		stopwatch.Restart();
 		eastl::fill_n(first, n, v);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 
@@ -419,7 +401,7 @@ namespace
 		stopwatch.Restart();
 		std::reverse(first, last);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 	template <typename Iterator>
@@ -428,7 +410,7 @@ namespace
 		stopwatch.Restart();
 		eastl::reverse(first, last);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 
@@ -439,7 +421,7 @@ namespace
 		stopwatch.Restart();
 		std::rotate(first, middle, last); // C++11 specifies that rotate has a return value, but not all std implementations return it.
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
 	template <typename Iterator>
@@ -448,9 +430,26 @@ namespace
 		stopwatch.Restart();
 		eastl::rotate(first, middle, last);
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%p", &*first);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*first);
 	}
 
+	template <typename Iterator>
+	void TestMergeStd(EA::StdC::Stopwatch& stopwatch, Iterator firstIn1, Iterator lastIn1, Iterator firstIn2, Iterator lastIn2, Iterator out)
+	{
+		stopwatch.Restart();
+		std::merge(firstIn1, lastIn1, firstIn2, lastIn2, out);
+		stopwatch.Stop();
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*out);
+	}
+
+	template <typename Iterator>
+	void TestMergeEa(EA::StdC::Stopwatch& stopwatch, Iterator firstIn1, Iterator lastIn1, Iterator firstIn2, Iterator lastIn2, Iterator out)
+	{
+		stopwatch.Restart();
+		eastl::merge(firstIn1, lastIn1, firstIn2, lastIn2, out);
+		stopwatch.Stop();
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%p", &*out);
+	}
 } // namespace
 
 
@@ -643,18 +642,6 @@ void BenchmarkAlgorithm2(EASTLTest_Rand& rng, EA::StdC::Stopwatch& stopwatch1, E
 
 
 			///////////////////////////////
-			// Test random_shuffle
-			///////////////////////////////
-
-			TestRandomShuffleStd(stopwatch1, stdVectorUint64, rng);
-			TestRandomShuffleEa (stopwatch2, eaVectorUint64,  rng);
-
-			if(i == 1)
-				Benchmark::AddResult("algorithm/rand_shuffle/vector<uint64_t>", stopwatch1.GetUnits(), stopwatch1.GetElapsedTime(), stopwatch2.GetElapsedTime());
-
-
-
-			///////////////////////////////
 			// Test lower_bound
 			///////////////////////////////
 
@@ -693,7 +680,7 @@ void BenchmarkAlgorithm2(EASTLTest_Rand& rng, EA::StdC::Stopwatch& stopwatch1, E
 				std::sort(stdVectorUint64.begin(), stdVectorUint64.end());
 				eaVectorUint64.assign(&stdVectorUint64[0], &stdVectorUint64[0] + stdVectorUint64.size());
 
-				TestEqualRangeStd(stopwatch1, stdVectorUint32, &stdVectorUint32[0], &stdVectorUint32[0] + stdVectorUint32.size());
+				TestEqualRangeStd(stopwatch1, stdVectorUint64, &stdVectorUint64[0], &stdVectorUint64[0] + stdVectorUint64.size());
 				TestEqualRangeEa (stopwatch2,  eaVectorUint64,  &eaVectorUint64[0],  &eaVectorUint64[0] +  eaVectorUint64.size());
 
 				if(i == 1)
@@ -856,10 +843,10 @@ void BenchmarkAlgorithm5(EASTLTest_Rand& /*rng*/, EA::StdC::Stopwatch& stopwatch
 			if(i == 1)
 				Benchmark::AddResult("algorithm/fill/vector<char>/'d'", stopwatch1.GetUnits(), stopwatch1.GetElapsedTime(), stopwatch2.GetElapsedTime());
 
-			TestFillStd(stopwatch1, stdVectorChar.begin(), stdVectorChar.end(), 0); 
-			TestFillEa (stopwatch2,  eaVectorChar.begin(),  eaVectorChar.end(), 0);
-			TestFillStd(stopwatch1, stdVectorChar.begin(), stdVectorChar.end(), 0); // Intentionally do this a second time, as we are finding 
-			TestFillEa (stopwatch2,  eaVectorChar.begin(),  eaVectorChar.end(), 0); // the results are inconsistent otherwise.
+			TestFillStd(stopwatch1, stdVectorChar.begin(), stdVectorChar.end(), (char)0); 
+			TestFillEa (stopwatch2,  eaVectorChar.begin(),  eaVectorChar.end(), (char)0);
+			TestFillStd(stopwatch1, stdVectorChar.begin(), stdVectorChar.end(), (char)0); // Intentionally do this a second time, as we are finding 
+			TestFillEa (stopwatch2,  eaVectorChar.begin(),  eaVectorChar.end(), (char)0); // the results are inconsistent otherwise.
 
 			if(i == 1)
 				Benchmark::AddResult("algorithm/fill/vector<char>/0", stopwatch1.GetUnits(), stopwatch1.GetElapsedTime(), stopwatch2.GetElapsedTime());
@@ -1111,7 +1098,118 @@ void BenchmarkAlgorithm7(EASTLTest_Rand& /*rng*/, EA::StdC::Stopwatch& stopwatch
 	}
 }
 
+void BenchmarkAlgorithm8(EASTLTest_Rand& rng, EA::StdC::Stopwatch& stopwatch1, EA::StdC::Stopwatch& stopwatch2)
+{
+	const uint32_t ElementCount = 10000;
 
+	eastl::vector<int> srcVecA(ElementCount);
+	eastl::vector<int> srcVecB(ElementCount);
+
+	std::vector<int> stdVecAInt(ElementCount);
+	std::vector<int> stdVecBInt(ElementCount);
+	std::vector<int> stdVecOutInt(2 * ElementCount);
+	std::vector<TestObject> stdVecATestObject(ElementCount);
+	std::vector<TestObject> stdVecBTestObject(ElementCount);
+	std::vector<TestObject> stdVecOutTestObject(2 * ElementCount);
+
+	eastl::vector<int> eaVecAInt(ElementCount);
+	eastl::vector<int> eaVecBInt(ElementCount);
+	eastl::vector<int> eaVecOutInt(2 * ElementCount);
+	eastl::vector<TestObject> eaVecATestObject(ElementCount);
+	eastl::vector<TestObject> eaVecBTestObject(ElementCount);
+	eastl::vector<TestObject> eaVecOutTestObject(2 * ElementCount);
+
+	// Note:
+	//   In some cases the compiler may generate branch free code for the loop body of merge.
+	//   In this situation the performance of merging data that has a random merge selection (i.e. the chance that the smallest
+	//   element is taken from the first or second list is essentially random) is the same as merging data where the choice of
+	//   which list has the smallest element is predictable.
+	//   However, if the compiler doesn't generate branch free code, then the performance of merge will suffer from branch
+	//   misprediction when merging random data and will benefit greatly when misprediction is rare.
+	//   This benchmark is aimed at highlighting what sort of code is being generated, and also showing the impact of
+	//   predictability of the comparisons performed during merge.  The branch predictablity /can/ have a large impact
+	//   on merge sort performance.
+
+	// 'unpred' is the case where the comparison is unpredictable
+	// 'pred' is the case where the comparison is mostly predictable
+	const char* patternDescriptions[][2] =
+	{
+		{
+			"algorithm/merge/vector<int> (unpred)",
+			"algorithm/merge/vector<int> (pred)",
+		},
+		{
+			"algorithm/merge/vector<TestObject> (unpred)",
+			"algorithm/merge/vector<TestObject> (pred)",
+		},
+	};
+
+	enum Pattern
+	{
+		P_Random,
+		P_Predictable,
+		P_Count
+	};
+
+	for (int pattern = 0; pattern < P_Count; pattern++)
+	{
+		if (pattern == P_Random)
+		{
+			eastl::generate(srcVecA.begin(), srcVecA.end(), [&]{ return int(rng()); });
+			eastl::sort(srcVecA.begin(), srcVecA.end());
+			eastl::generate(srcVecB.begin(), srcVecB.end(), [&] { return int(rng()); });
+			eastl::sort(srcVecB.begin(), srcVecB.end());
+		}
+		else if (pattern == P_Predictable)
+		{
+			// The data pattern means that a simple/naive algorithm will select 'runLen' values
+			// from one list, and then 'runLen' values from the other list (alternating back and forth).
+			// Of course, a merge algorithm that is more complicated might have a different order of
+			// comparison.
+			const int runLen = 32;
+			for (int i = 0; i < ElementCount; i++)
+			{
+				int baseValue = ((i / runLen) * 2 * runLen) + (i % (runLen));
+				srcVecA[i] = baseValue;
+				srcVecB[i] = baseValue + runLen;
+			}
+		}
+
+		///////////////////////////////
+		// Test merge
+		///////////////////////////////
+		for (int i = 0; i < 2; i++)
+		{
+			eastl::copy(srcVecA.begin(), srcVecA.end(), stdVecAInt.begin());
+			eastl::copy(srcVecB.begin(), srcVecB.end(), stdVecBInt.begin());
+			eastl::copy(srcVecA.begin(), srcVecA.end(), eaVecAInt.begin());
+			eastl::copy(srcVecB.begin(), srcVecB.end(), eaVecBInt.begin());
+			TestMergeStd(stopwatch1, stdVecAInt.begin(), stdVecAInt.end(), stdVecBInt.begin(), stdVecBInt.end(), stdVecOutInt.begin());
+			TestMergeEa(stopwatch2, eaVecAInt.begin(), eaVecAInt.end(), eaVecBInt.begin(), eaVecBInt.end(), eaVecOutInt.begin());
+
+			if (i == 1)
+			{
+				Benchmark::AddResult(patternDescriptions[0][pattern], stopwatch1.GetUnits(), stopwatch1.GetElapsedTime(), stopwatch2.GetElapsedTime());
+			}
+
+			for (int j = 0; j < ElementCount; j++)
+			{
+				stdVecATestObject[j] = TestObject(srcVecA[j]);
+				stdVecBTestObject[j] = TestObject(srcVecB[j]);
+				eaVecATestObject[j] = TestObject(srcVecA[j]);
+				eaVecBTestObject[j] = TestObject(srcVecB[j]);
+			}
+			TestMergeStd(stopwatch1, stdVecATestObject.begin(), stdVecATestObject.end(), stdVecBTestObject.begin(), stdVecBTestObject.end(), stdVecOutTestObject.begin());
+			TestMergeEa(stopwatch2, eaVecATestObject.begin(), eaVecATestObject.end(), eaVecBTestObject.begin(), eaVecBTestObject.end(), eaVecOutTestObject.begin());
+
+			if (i == 1)
+			{
+				Benchmark::AddResult(patternDescriptions[1][pattern], stopwatch1.GetUnits(), stopwatch1.GetElapsedTime(), stopwatch2.GetElapsedTime());
+			}
+		}
+	}
+
+}
 
 
 
@@ -1130,6 +1228,7 @@ void BenchmarkAlgorithm()
 	BenchmarkAlgorithm5(rng, stopwatch1, stopwatch2);
 	BenchmarkAlgorithm6(rng, stopwatch1, stopwatch2);
 	BenchmarkAlgorithm7(rng, stopwatch1, stopwatch2);
+	BenchmarkAlgorithm8(rng, stopwatch1, stopwatch2);
 }
 
 

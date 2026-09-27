@@ -7,6 +7,7 @@
 EA_DISABLE_VC_WARNING(4623 4625 4413 4510)
 
 #include <EASTL/tuple.h>
+#include <EASTL/unique_ptr.h>
 
 #if EASTL_TUPLE_ENABLED
 
@@ -17,29 +18,6 @@ struct DefaultConstructibleType
 {
 	static const int defaultVal = 0x1EE7C0DE;
 	DefaultConstructibleType() : mVal(defaultVal) {}
-	int mVal;
-};
-
-struct MoveOnlyType
-{
-// tuple should work with non default constructible types but due to a bug in VS2103 is_default_constructible type trait
-// it doesn't work there
-#if !defined(_MSC_VER) || (_MSC_VER > 1800)
-	MoveOnlyType() = delete;
-#else
-	MoveOnlyType() : mVal() {}
-#endif
-	MoveOnlyType(int val) : mVal(val) {}
-	MoveOnlyType(const MoveOnlyType&) = delete;
-	MoveOnlyType(MoveOnlyType&& x) : mVal(x.mVal) { x.mVal = 0; }
-	MoveOnlyType& operator=(const MoveOnlyType&) = delete;
-	MoveOnlyType& operator=(MoveOnlyType&& x)
-	{
-		mVal = x.mVal;
-		x.mVal = 0;
-		return *this;
-	}
-
 	int mVal;
 };
 
@@ -111,18 +89,14 @@ int TestTuple()
 	static_assert(tuple_size<const tuple<int>>::value == 1, "tuple_size<const tuple<T>> test failed.");
 	static_assert(tuple_size<const tuple<const int>>::value == 1, "tuple_size<const tuple<const T>> test failed.");
 	static_assert(tuple_size<volatile tuple<int>>::value == 1, "tuple_size<volatile tuple<T>> test failed.");
-	static_assert(tuple_size<const volatile tuple<int>>::value == 1,
-				  "tuple_size<const volatile tuple<T>> test failed.");
+	static_assert(tuple_size<const volatile tuple<int>>::value == 1, "tuple_size<const volatile tuple<T>> test failed.");
 	static_assert(tuple_size<tuple<int, float, bool>>::value == 3, "tuple_size<tuple<T, T, T>> test failed.");
 
 	static_assert(is_same<tuple_element_t<0, tuple<int>>, int>::value, "tuple_element<I, T> test failed.");
 	static_assert(is_same<tuple_element_t<1, tuple<float, int>>, int>::value, "tuple_element<I, T> test failed.");
-	static_assert(is_same<tuple_element_t<1, tuple<float, const int>>, const int>::value,
-				  "tuple_element<I, T> test failed.");
-	static_assert(is_same<tuple_element_t<1, tuple<float, volatile int>>, volatile int>::value,
-				  "tuple_element<I, T> test failed.");
-	static_assert(is_same<tuple_element_t<1, tuple<float, const volatile int>>, const volatile int>::value,
-				  "tuple_element<I, T> test failed.");
+	static_assert(is_same<tuple_element_t<1, tuple<float, const int>>, const int>::value, "tuple_element<I, T> test failed.");
+	static_assert(is_same<tuple_element_t<1, tuple<float, volatile int>>, volatile int>::value, "tuple_element<I, T> test failed.");
+	static_assert(is_same<tuple_element_t<1, tuple<float, const volatile int>>, const volatile int>::value, "tuple_element<I, T> test failed.");
 	static_assert(is_same<tuple_element_t<1, tuple<float, int&>>, int&>::value, "tuple_element<I, T> test failed.");
 
 	{
@@ -253,10 +227,38 @@ int TestTuple()
 		EATEST_VERIFY(aTuple != aDefaultInitTuple);
 		EATEST_VERIFY(aDefaultInitTuple < aTuple);
 
+		#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+		EATEST_VERIFY((aTuple <=> anotherTuple) == 0);
+		EATEST_VERIFY((aTuple <=> anotherTuple) >= 0);
+		EATEST_VERIFY((anotherTuple <=> aTuple) >= 0);
+		EATEST_VERIFY((aTuple <=> aDefaultInitTuple) != 0);
+		EATEST_VERIFY((aDefaultInitTuple <=> aTuple) < 0);
+		#endif
+
 		tuple<int, int, int> lesserTuple(1, 2, 3);
 		tuple<int, int, int> greaterTuple(1, 2, 4);
 		EATEST_VERIFY(lesserTuple < greaterTuple && !(greaterTuple < lesserTuple) && greaterTuple > lesserTuple &&
 					  !(lesserTuple > greaterTuple));
+
+		#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+		EATEST_VERIFY((lesserTuple <=> greaterTuple) != 0);
+		EATEST_VERIFY((lesserTuple <=> greaterTuple) < 0);
+		EATEST_VERIFY((lesserTuple <=> greaterTuple) <= 0);
+		EATEST_VERIFY((greaterTuple <=> lesserTuple) > 0);
+		EATEST_VERIFY((greaterTuple <=> lesserTuple) >= 0);
+		#endif
+
+		tuple<int, float, TestObject> valTup(2, 2.0f, TestObject(2));
+		tuple<int&, float&, TestObject&> refTup(valTup);
+		tuple<const int&, const float&, const TestObject&> constRefTup(valTup);
+
+		EATEST_VERIFY(get<0>(refTup) == get<0>(valTup));
+		EATEST_VERIFY(get<1>(refTup) == get<1>(valTup));
+		EATEST_VERIFY(refTup == valTup);
+		EATEST_VERIFY(get<0>(refTup) == get<0>(constRefTup));
+		EATEST_VERIFY(get<1>(refTup) == get<1>(constRefTup));
+		EATEST_VERIFY(constRefTup == valTup);
+		EATEST_VERIFY(constRefTup == refTup);
 
 		// swap
 		swap(lesserTuple, greaterTuple);
@@ -267,17 +269,36 @@ int TestTuple()
 
 	{
 		// Test construction of tuple containing a move only type
-		static_assert(is_constructible<MoveOnlyType, MoveOnlyType>::value,
-					  "is_constructible type trait giving confusing answers.");
-		static_assert(is_constructible<MoveOnlyType, MoveOnlyType&&>::value,
-					  "is_constructible type trait giving wrong answers.");
-		// Static assert below fails on clang OSX
-		// static_assert(is_constructible<MoveOnlyType&&, MoveOnlyType&&>::value, "is_constructible type trait giving
-		// bizarre answers.");
+		static_assert(is_constructible<MoveOnlyType, MoveOnlyType>::value, "is_constructible type trait giving confusing answers.");
+		static_assert(is_constructible<MoveOnlyType, MoveOnlyType&&>::value, "is_constructible type trait giving wrong answers.");
+		static_assert(is_constructible<MoveOnlyType&&, MoveOnlyType&&>::value, "is_constructible type trait giving bizarre answers.");
 		tuple<MoveOnlyType> aTupleWithMoveOnlyMember(1);
 		EATEST_VERIFY(get<0>(aTupleWithMoveOnlyMember).mVal == 1);
 		get<0>(aTupleWithMoveOnlyMember) = MoveOnlyType(2);
 		EATEST_VERIFY(get<0>(aTupleWithMoveOnlyMember).mVal == 2);
+
+		tuple<const MoveOnlyType&> aTupleWithRefToMoveOnlyMember(aTupleWithMoveOnlyMember);
+		EATEST_VERIFY(get<0>(aTupleWithRefToMoveOnlyMember).mVal == 2);
+
+		tuple<const MoveOnlyType&> aTupleWithConstRefToGetMoveOnly(get<0>(aTupleWithMoveOnlyMember));
+		EATEST_VERIFY(get<0>(aTupleWithConstRefToGetMoveOnly).mVal == 2);
+
+		tuple<MoveOnlyType&> aTupleWithRefToGetMoveOnly(get<0>(aTupleWithMoveOnlyMember));
+		EATEST_VERIFY(get<0>(aTupleWithRefToGetMoveOnly).mVal == 2);
+	}
+
+	{
+		// Test construction of tuple containing r-value references
+		int x = 42;
+		TestObject object{1337};
+		
+		tuple<int&&, TestObject&&> aTupleWithRValueReference(eastl::move(x), eastl::move(object));
+		static_assert(is_same<decltype(get<0>(aTupleWithRValueReference)), int&>::value, "wrong return type for get when using r-value reference.");
+		static_assert(is_same<decltype(get<1>(aTupleWithRValueReference)), TestObject&>::value, "wrong return type for get when using r-value reference.");
+		EATEST_VERIFY(get<0>(aTupleWithRValueReference) == 42);
+		EATEST_VERIFY(get<1>(aTupleWithRValueReference).mX == 1337);
+
+		static_assert(!is_constructible<decltype(aTupleWithRValueReference), int&, TestObject&>::value, "it shouldn't be possible to assign r-value references with l-values.");
 	}
 
 	{
@@ -288,51 +309,449 @@ int TestTuple()
 		EATEST_VERIFY(get<0>(makeTuple) == 1 && get<1>(makeTuple) == 2.0 && get<2>(makeTuple) == true);
 
 		// TODO: reference_wrapper implementation needs to be finished to enable this code
-		/*
-		int a = 2;
-		float b = 3.0f;
-		auto makeTuple2 = make_tuple(ref(a), b);
-		get<0>(makeTuple2) = 3;
-		get<1>(makeTuple2) = 4.0f;
-		EATEST_VERIFY(get<0>(makeTuple2) == 3 && get<1>(makeTuple2) == 4.0f && a == 3 && b == 3.0f);
-		*/
+		{
+			int a = 2;
+			float b = 3.0f;
+			auto makeTuple2 = make_tuple(ref(a), b);
+			get<0>(makeTuple2) = 3;
+			get<1>(makeTuple2) = 4.0f;
+			EATEST_VERIFY(get<0>(makeTuple2) == 3 && get<1>(makeTuple2) == 4.0f && a == 3 && b == 3.0f);
+		}
 
 		// forward_as_tuple
-		auto forwardTest = [](tuple < MoveOnlyType &&, MoveOnlyType && > x)->tuple<MoveOnlyType, MoveOnlyType>
 		{
-			return tuple<MoveOnlyType, MoveOnlyType>(move(x));
+			auto forwardTest = [](tuple<MoveOnlyType&&, MoveOnlyType&&> x) -> tuple<MoveOnlyType, MoveOnlyType>
+			{
+				return tuple<MoveOnlyType, MoveOnlyType>(move(x));
+			};
+
+			tuple<MoveOnlyType, MoveOnlyType> aMovableTuple(
+			    forwardTest(forward_as_tuple(MoveOnlyType(1), MoveOnlyType(2))));
+
+			EATEST_VERIFY(get<0>(aMovableTuple).mVal == 1 && get<1>(aMovableTuple).mVal == 2);
+		}
+
+		{
+			// tie
+			int a = 0;
+			double b = 0.0f;
+			static_assert(is_assignable<const Internal::ignore_t&, int>::value, "ignore_t not assignable");
+			static_assert(Internal::TupleAssignable<tuple<const Internal::ignore_t&>, tuple<int>>::value, "Not assignable");
+			tie(a, ignore, b) = make_tuple(1, 3, 5);
+			EATEST_VERIFY(a == 1 && b == 5.0f);
+
+			auto aCattedRefTuple = tuple_cat(make_tuple(1), tie(a, ignore, b));
+			get<1>(aCattedRefTuple) = 2;
+			EATEST_VERIFY(a == 2);
+		}
+
+		// tuple_cat
+		{
+			// zero args
+			{				
+				auto result = tuple_cat();
+				static_assert(eastl::is_same_v<decltype(result), tuple<>>, "type mismatch");
+			}
+
+			// one arg - l-value
+			{
+				tuple<int, bool> t{42, true};
+				
+				auto result = tuple_cat(t);
+				
+				static_assert(eastl::is_same_v<decltype(result), tuple<int, bool>>, "type mismatch");
+				
+				EATEST_VERIFY(get<0>(result) == 42);
+				EATEST_VERIFY(get<1>(result));
+			}
+
+			// one arg - r-value
+			{
+				tuple<int, unique_ptr<bool>> t{42, new bool(true)};
+				
+				auto result = tuple_cat(eastl::move(t));
+
+				static_assert(eastl::is_same_v<decltype(result), tuple<int, unique_ptr<bool>>>, "type mismatch");
+				
+				EATEST_VERIFY(get<0>(result) == 42);
+				EATEST_VERIFY(get<1>(result) != nullptr && *get<1>(result));
+				EATEST_VERIFY(get<1>(t) == nullptr);
+			}
+			
+			// two args - l-values
+			{
+				tuple<int, bool> t1{42, true};
+				tuple<float, int> t2{3.14f, 1337};
+				
+				auto result = tuple_cat(t1, t2);
+
+				static_assert(eastl::is_same_v<decltype(result), tuple<int, bool, float, int>>, "type mismatch");
+				
+				EATEST_VERIFY(get<0>(result) == 42);
+				EATEST_VERIFY(get<1>(result));
+				EATEST_VERIFY(get<2>(result) == 3.14f);
+				EATEST_VERIFY(get<3>(result) == 1337);
+			}
+
+			// two args - r-values
+			{
+				tuple<int, unique_ptr<bool>> t1{42, new bool(true)};
+				tuple<unique_ptr<float>, int> t2{new float(3.14f), 1337};
+				
+				auto result = tuple_cat(eastl::move(t1), eastl::move(t2));
+
+				static_assert(eastl::is_same_v<decltype(result), tuple<int, unique_ptr<bool>, unique_ptr<float>, int>>, "type mismatch");
+				
+				EATEST_VERIFY(get<0>(result) == 42);
+				EATEST_VERIFY(get<1>(result) != nullptr && *get<1>(result));
+				EATEST_VERIFY(get<1>(t1) == nullptr);
+				EATEST_VERIFY(get<2>(result) != nullptr && *get<2>(result) == 3.14f);
+				EATEST_VERIFY(get<3>(result) == 1337);
+				EATEST_VERIFY(get<0>(t2) == nullptr);
+			}
+
+			// More than two parameters and empty tuples.
+			{
+				tuple<int, bool> t1{42, true};
+				tuple<unique_ptr<float>, int> t2{new float(3.14f), 1337};
+				tuple<> t3{};
+				tuple<unique_ptr<short>> t4{new short(10)};
+				
+				auto result = tuple_cat(t1, eastl::move(t2), t3, eastl::move(t4));
+
+				static_assert(eastl::is_same_v<decltype(result), tuple<int, bool, unique_ptr<float>, int, unique_ptr<short>>>, "type mismatch");
+				
+				EATEST_VERIFY(get<0>(result) == 42);
+				EATEST_VERIFY(get<1>(result));
+				EATEST_VERIFY(get<2>(result) != nullptr && *get<2>(result) == 3.14f);
+				EATEST_VERIFY(get<3>(result) == 1337);
+				EATEST_VERIFY(get<4>(result) != nullptr && *get<4>(result) == 10);
+			}
+		}
+
+		{
+			// Empty tuple
+			tuple<> emptyTuple;
+			EATEST_VERIFY(tuple_size<decltype(emptyTuple)>::value == 0);
+			emptyTuple = make_tuple();
+			auto anotherEmptyTuple = make_tuple();
+			swap(anotherEmptyTuple, emptyTuple);
+		}
+	}
+
+	// test piecewise_construct
+	{
+		{
+			struct local
+			{
+				local() = default;
+				local(int a, int b) : mA(a), mB(b) {}
+
+				int mA = 0;
+				int mB = 0;
+			};
+
+			auto t = make_tuple(42, 43);
+
+			eastl::pair<local, local> p(eastl::piecewise_construct, t, t);
+
+			EATEST_VERIFY(p.first.mA  == 42);
+			EATEST_VERIFY(p.second.mA == 42);
+			EATEST_VERIFY(p.first.mB  == 43);
+			EATEST_VERIFY(p.second.mB == 43);
+		}
+
+		{
+			struct local
+			{
+				local() = default;
+				local(int a, int b, int c, int d) : mA(a), mB(b), mC(c), mD(d) {}
+
+				int mA = 0;
+				int mB = 0;
+				int mC = 0;
+				int mD = 0;
+			};
+
+			auto t = make_tuple(42, 43, 44, 45);
+
+			eastl::pair<local, local> p(eastl::piecewise_construct, t, t);
+
+			EATEST_VERIFY(p.first.mA  == 42);
+			EATEST_VERIFY(p.second.mA == 42);
+
+			EATEST_VERIFY(p.first.mB  == 43);
+			EATEST_VERIFY(p.second.mB == 43);
+
+			EATEST_VERIFY(p.first.mC  == 44);
+			EATEST_VERIFY(p.second.mC == 44);
+
+			EATEST_VERIFY(p.first.mD  == 45);
+			EATEST_VERIFY(p.second.mD == 45);
+		}
+
+		{
+			struct local1
+			{
+				local1() = default;
+				local1(int a) : mA(a) {}
+				int mA = 0;
+			};
+
+			struct local2
+			{
+				local2() = default;
+				local2(char a) : mA(a) {}
+				char mA = 0;
+			};
+
+			auto t1 = make_tuple(42);
+			auto t2 = make_tuple('a');
+
+			eastl::pair<local1, local2> p(eastl::piecewise_construct, t1, t2);
+
+			EATEST_VERIFY(p.first.mA  == 42);
+			EATEST_VERIFY(p.second.mA == 'a');
+		}
+	}
+
+	// apply
+	{
+		// test with tuples
+		{
+			{
+				auto result = eastl::apply([](int i) { return i; }, make_tuple(1));
+				EATEST_VERIFY(result == 1);
+			}
+
+			{
+				auto result = eastl::apply([](int i, int j) { return i + j; }, make_tuple(1, 2));
+				EATEST_VERIFY(result == 3);
+			}
+
+
+			{
+				auto result = eastl::apply([](int i, int j, int k, int m) { return i + j + k + m; }, make_tuple(1, 2, 3, 4));
+				EATEST_VERIFY(result == 10);
+			}
+		}
+
+		// test with pair
+		{
+			auto result = eastl::apply([](int i, int j) { return i + j; }, make_pair(1, 2));
+			EATEST_VERIFY(result == 3);
+		}
+
+		// test with array
+		{
+			// TODO(rparolin):   
+			// eastl::array requires eastl::get support before we can support unpacking eastl::arrays with eastl::apply.
+			//
+			// {
+			//     auto result = eastl::apply([](int i) { return i; }, eastl::array<int, 1>{1});
+			//     EATEST_VERIFY(result == 1);
+			// }
+			// {
+			//     auto result = eastl::apply([](int i, int j) { return i + j; }, eastl::array<int, 2>{1,2});
+			//     EATEST_VERIFY(result == 3);
+			// }
+			// {
+			//     auto result = eastl::apply([](int i, int j, int k, int m) { return i + j + k + m; }, eastl::array<int, 4>{1, 2, 3, 4});
+			//     EATEST_VERIFY(result == 10);
+			// }
+		}
+	}
+
+	// make_from_tuple
+	{
+		{
+			TestObject x = eastl::make_from_tuple<TestObject>(eastl::make_tuple(1, true));
+			EATEST_VERIFY(x.mX == 1);
+			EATEST_VERIFY(x.mbThrowOnCopy == true);
+		}
+
+		{
+			TestObject x = eastl::make_from_tuple<TestObject>(eastl::make_tuple(1, 2, 3));
+			EATEST_VERIFY(x.mX == 6);
+		}
+	}
+
+	// Compilation test to make sure that the conditionally-explicit cast works
+	{
+		eastl::tuple<int, float, TestObject> arrayTup[] = {
+			{1, 1.0f, TestObject(1)},
+			{2, 2.0f, TestObject(2)},
+			{3, 3.0f, TestObject(3)},
+			{4, 4.0f, TestObject(4)}
+		};
+		(void)arrayTup;
+
+#if false
+		// the following code should not compile with conditionally-explicit behaviour (but does with fully implicit behaviour)
+		eastl::tuple<eastl::vector<float>, float> arrayOfArrayTup[] = {
+			{1.0f, 1.0f},
+			{2.0f, 2.0f}
 		};
 
-		tuple<MoveOnlyType, MoveOnlyType> aMovableTuple(
-			forwardTest(forward_as_tuple(MoveOnlyType(1), MoveOnlyType(2))));
-		EATEST_VERIFY(get<0>(aMovableTuple).mVal == 1 && get<1>(aMovableTuple).mVal == 2);
+		eastl::tuple<eastl::vector<int>, float> arrayOfArrayTup2[] = {
+			{1, 1.0f},
+			{2, 2.0f}
+		};
+#endif
+	}
 
-		// tie
-		int a = 0;
-		double b = 0.0f;
-		static_assert(is_assignable<const Internal::ignore_t&, int>::value, "ignore_t not assignable");
-		static_assert(Internal::TupleAssignable<tuple<const Internal::ignore_t&>, tuple<int>>::value, "Not assignable");
-		tie(a, ignore, b) = make_tuple(1, 3, 5);
-		EATEST_VERIFY(a == 1 && b == 5.0f);
-		// tuple_cat
-		auto tcatRes = tuple_cat(make_tuple(1, 2.0f), make_tuple(3.0, true));
-		EATEST_VERIFY(get<0>(tcatRes) == 1 && get<1>(tcatRes) == 2.0f && get<2>(tcatRes) == 3.0 &&
-					  get<3>(tcatRes) == true);
+	// Compilation test to make sure that we can handle reference to forward-declared types
+	{
+		struct ForwardDeclared;
 
-		auto tcatRes2 = tuple_cat(make_tuple(1, 2.0f), make_tuple(3.0, true), make_tuple(5u, '6'));
-		EATEST_VERIFY(get<0>(tcatRes2) == 1 && get<1>(tcatRes2) == 2.0f && get<2>(tcatRes2) == 3.0 &&
-					  get<3>(tcatRes2) == true && get<4>(tcatRes2) == 5u && get<5>(tcatRes2) == '6');
+		auto fill_tuple = [](ForwardDeclared& f) {
+			eastl::tuple<ForwardDeclared&, const ForwardDeclared&> t{f, f};
+			return t;
+		};
 
-		auto aCattedRefTuple = tuple_cat(make_tuple(1), tie(a, ignore, b));
-		get<1>(aCattedRefTuple) = 2;
+		struct ForwardDeclared
+		{
+			int x;
+		};
+
+		ForwardDeclared f{666};
+		auto t = fill_tuple(f);
+
+		EATEST_VERIFY(get<0>(t).x == 666);
+		EATEST_VERIFY(get<1>(t).x == 666);
+	}
+
+	#ifndef EA_COMPILER_NO_STRUCTURED_BINDING
+	// tuple structured bindings test 
+	{
+		eastl::tuple<int, int, int> t = {1,2,3};
+		auto [x,y,z] = t;
+		EATEST_VERIFY(x == 1);
+		EATEST_VERIFY(y == 2);
+		EATEST_VERIFY(z == 3);
+	}
+
+	{ // const unpacking test
+		eastl::tuple<int, int, int> t = {1,2,3};
+		const auto [x,y,z] = t;
+		EATEST_VERIFY(x == 1);
+		EATEST_VERIFY(y == 2);
+		EATEST_VERIFY(z == 3);
+	}
+	#endif
+
+	// user reported regression that exercises type_traits trying to pull out the element_type from "fancy pointers"
+	{
+		auto up = eastl::make_unique<int[]>(100);
+		auto t = eastl::make_tuple(eastl::move(up));
+
+		using ResultTuple_t = decltype(t);
+		static_assert(eastl::is_same_v<ResultTuple_t, eastl::tuple<eastl::unique_ptr<int[]>>>); 
+		static_assert(eastl::is_same_v<eastl::tuple_element_t<0, ResultTuple_t>, eastl::unique_ptr<int[]>>);
+	}
+
+	// user reported issue that a tuple was not default constructible if a tuple element type had no members (ie. is_empty_v<T>).
+	{
+		tuple<> emptyTuple;
+		EA_UNUSED(emptyTuple);
+
+		tuple<NoDataMembers> tupleWithEmptyMember;
+		EA_UNUSED(tupleWithEmptyMember);
+		tuple<NoDataMembers, int> tupleWithEmptyMember2;
+		EA_UNUSED(tupleWithEmptyMember2);
+		tuple<int, NoDataMembers> tupleWithEmptyMember3;
+		EA_UNUSED(tupleWithEmptyMember3);
+
+		static_assert(sizeof(tuple<NoDataMembers, int>) <= sizeof(tuple<int>));
+		static_assert(sizeof(tuple<int, NoDataMembers>) <= sizeof(tuple<int>));
+
+		tuple<NoDataMembers> tupleWithEmptyMember4(NoDataMembers{});
+		EA_UNUSED(tupleWithEmptyMember4);
+
+		struct EmptyNoDefaultCtor
+		{
+			EmptyNoDefaultCtor() = delete;
+			EmptyNoDefaultCtor(int) {}
+		};
+
+		tuple<EmptyNoDefaultCtor> tupleWithEmptyMember5(EmptyNoDefaultCtor{3});
+		EA_UNUSED(tupleWithEmptyMember5);
+	}
+
+	// tests for an empty nested tuple element.
+	// Empty tuples as elements of a tuple caused compilation errors in get<I>(some-tuple) in an earlier version.
+	{
+		EATEST_VERIFY(get<0>(tuple<tuple<>>{}) == tuple<>{});
+		EATEST_VERIFY(get<0>(tuple<int, tuple<>>{}) == 0);
+		EATEST_VERIFY(get<1>(tuple<int, tuple<>>{}) == tuple<>{});
+		EATEST_VERIFY(get<0>(tuple<tuple<>, int>{}) == tuple<>{});
+		EATEST_VERIFY(get<1>(tuple<tuple<>, int>{}) == 0);
+
+		EATEST_VERIFY(get<tuple<>>(tuple<tuple<>>{}) == tuple<>{});
+		EATEST_VERIFY(get<int>(tuple<int, tuple<>>{}) == 0);
+		EATEST_VERIFY(get<tuple<>>(tuple<int, tuple<>>{}) == tuple<>{});
+		EATEST_VERIFY(get<tuple<>>(tuple<tuple<>, int>{}) == tuple<>{});
+		EATEST_VERIFY(get<int>(tuple<tuple<>, int>{}) == 0);
+
+		// test special member functions.
+		tuple<tuple<>, int> a;
+		tuple<tuple<>, int> b(a);
+		EATEST_VERIFY(b == a);
+		b = a;
+		EATEST_VERIFY(b == a);
+		b = eastl::move(a);
+		EATEST_VERIFY(b == a);
+	}
+
+	{
+
+		// check that we can assign from/to tuples of references.
+		int a{1};
+		int b{2};
+		tuple<int&> t1{a};
+		tuple<int&> t2{b};
+		EATEST_VERIFY(get<0>(t1) == 1);
+		EATEST_VERIFY(get<0>(t2) == 2);
+
+		t1 = eastl::move(t2);
+		EATEST_VERIFY(get<0>(t1) == 2);
 		EATEST_VERIFY(a == 2);
 
-		// Empty tuple
-		tuple<> emptyTuple;
-		EATEST_VERIFY(tuple_size<decltype(emptyTuple)>::value == 0);
-		emptyTuple = make_tuple();
-		auto anotherEmptyTuple = make_tuple();
-		swap(anotherEmptyTuple, emptyTuple);
+		get<0>(t2) = 3;
+		t1 = t2;
+		EATEST_VERIFY(get<0>(t1) == 3);
+		EATEST_VERIFY(a == 3);
+		EATEST_VERIFY(b == 3);
+
+		a = 1;
+		EATEST_VERIFY(get<0>(t1) == 1);
+
+		const tuple<int&> t3{b};
+		t1 = t3;
+		EATEST_VERIFY(get<0>(t1) == 3);
+	}
+
+	{
+		tuple<NoCopyMove> t;
+		[[maybe_unused]] auto& x = get<0>(t);
+	}
+
+	{
+		tuple<NoCopyMoveNonEmpty> t;
+		[[maybe_unused]] auto& x = get<0>(t);
+	}
+
+	{
+		NoCopyMove x;
+		tuple<NoCopyMove&> t{x};
+		[[maybe_unused]] auto& y = get<0>(t);
+	}
+
+	{
+		// Check that this still compiles:
+		NoCopyMoveNonEmpty x;
+		tuple<NoCopyMoveNonEmpty&> t{x};
+		[[maybe_unused]] auto& y = get<0>(t);
 	}
 
 	return nErrorCount;

@@ -56,16 +56,14 @@ namespace
 			return *this;
 		}
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			MovableType(MovableType&& x) EA_NOEXCEPT : mpData(x.mpData)
-				{ x.mpData = NULL; }
+		MovableType(MovableType&& x) EA_NOEXCEPT : mpData(x.mpData)
+			{ x.mpData = NULL; }
 
-			MovableType& operator=(MovableType&& x)
-			{
-				eastl::swap(mpData, x.mpData); // In practice it may not be right to do a swap, depending on the case.
-				return *this;
-			}
-		#endif
+		MovableType& operator=(MovableType&& x)
+		{
+			eastl::swap(mpData, x.mpData); // In practice it may not be right to do a swap, depending on the case.
+			return *this;
+		}
 
 	   ~MovableType()
 			{ delete[] mpData; }
@@ -123,21 +121,19 @@ namespace
 			return *this;
 		}
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			AutoRefCount(AutoRefCount&& x) EA_NOEXCEPT : mpObject(x.mpObject) 
-			{ 
-				x.mpObject = NULL;
-			}
+		AutoRefCount(AutoRefCount&& x) EA_NOEXCEPT : mpObject(x.mpObject) 
+		{ 
+			x.mpObject = NULL;
+		}
 
-			AutoRefCount& operator=(AutoRefCount&& x)
-			{
-				if(mpObject)
-					mpObject->Release();
-				mpObject = x.mpObject;
-				x.mpObject = NULL;
-				return *this;
-			}
-		#endif
+		AutoRefCount& operator=(AutoRefCount&& x)
+		{
+			if(mpObject)
+				mpObject->Release();
+			mpObject = x.mpObject;
+			x.mpObject = NULL;
+			return *this;
+		}
 
 		~AutoRefCount() 
 		{
@@ -204,7 +200,7 @@ namespace
 		for(typename Container::size_type j = 0, jEnd = c.size(); j < jEnd; j++)
 			temp += c[j];
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)(temp & 0xffffffff));
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)(temp & 0xffffffff));
 	}
 
 
@@ -216,7 +212,7 @@ namespace
 		iterator_t it = eastl::find(c.begin(), c.end(), UINT64_C(0xffffffffffff));
 		stopwatch.Stop();
 		if(it != c.end())
-			sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)*it);
+			EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)*it);
 	}
 
 
@@ -228,7 +224,7 @@ namespace
 		stopwatch.Restart();
 		eastl::quick_sort(c.begin(), c.end()); 
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)(c[0] & 0xffffffff));
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)(c[0] & 0xffffffff));
 	}
 
 

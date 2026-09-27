@@ -79,40 +79,32 @@
 #include <EASTL/memory.h>
 #include <EASTL/initializer_list.h>
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#include <new>
-	#include <stddef.h>
-	#pragma warning(pop)
-#else
-	#include <new>
-	#include <stddef.h>
-#endif
+EA_DISABLE_ALL_VC_WARNINGS()
+#include <new>
+#include <stddef.h>
+EA_RESTORE_ALL_VC_WARNINGS()
 
 #if EASTL_EXCEPTIONS_ENABLED
-	#ifdef _MSC_VER
-		#pragma warning(push, 0)
-	#endif
-	#include <stdexcept> // std::out_of_range, std::length_error.
-	#ifdef _MSC_VER
-		#pragma warning(pop)
-	#endif
+	EA_DISABLE_ALL_VC_WARNINGS()
+	#include <stdexcept> // std::out_of_range, std::length_error, std::logic_error.
+	EA_RESTORE_ALL_VC_WARNINGS()
 #endif
 
-#ifdef _MSC_VER
-	#pragma warning(push)
-	#pragma warning(disable: 4267)  // 'argument' : conversion from 'size_t' to 'const uint32_t', possible loss of data. This is a bogus warning resulting from a bug in VC++.
-	#pragma warning(disable: 4345)  // Behavior change: an object of POD type constructed with an initializer of the form () will be default-initialized
-	#pragma warning(disable: 4480)  // nonstandard extension used: specifying underlying type for enum
-	#pragma warning(disable: 4530)  // C++ exception handler used, but unwind semantics are not enabled. Specify /EHsc
-	#pragma warning(disable: 4571)  // catch(...) semantics changed since Visual C++ 7.1; structured exceptions (SEH) are no longer caught.
-	#if EASTL_EXCEPTIONS_ENABLED
-	#pragma warning(disable: 4703)  // potentially uninitialized local pointer variable used.   VC++ is mistakenly analyzing the possibility of uninitialized variables, though it's not easy for it to do so.
-	#pragma warning(disable: 4701)  // potentially uninitialized local variable used.
-	#endif
+
+// 4267 - 'argument' : conversion from 'size_t' to 'const uint32_t', possible loss of data. This is a bogus warning resulting from a bug in VC++.
+// 4345 - Behavior change: an object of POD type constructed with an initializer of the form () will be default-initialized
+// 4480 - nonstandard extension used: specifying underlying type for enum
+// 4530 - C++ exception handler used, but unwind semantics are not enabled. Specify /EHsc
+// 4571 - catch(...) semantics changed since Visual C++ 7.1; structured exceptions (SEH) are no longer caught.
+EA_DISABLE_VC_WARNING(4267 4345 4480 4530 4571);
+
+#if EASTL_EXCEPTIONS_ENABLED
+	// 4703 - potentially uninitialized local pointer variable used. VC++ is mistakenly analyzing the possibility of uninitialized variables, though it's not easy for it to do so.
+	// 4701 - potentially uninitialized local variable used.
+	EA_DISABLE_VC_WARNING(4703 4701)
 #endif
 
-		
+
 #if defined(EA_PRAGMA_ONCE_SUPPORTED)
 	#pragma once // Some compilers (e.g. VC++) benefit significantly from using this. We've measured 3-4% build speed improvements in apps as a result.
 #endif
@@ -163,7 +155,7 @@ namespace eastl
 		typedef DequeIterator<T, T*, T&, kDequeSubarraySize>              iterator;
 		typedef DequeIterator<T, const T*, const T&, kDequeSubarraySize>  const_iterator;
 		typedef ptrdiff_t                                                 difference_type;
-		typedef EASTL_ITC_NS::random_access_iterator_tag                  iterator_category;
+		typedef eastl::random_access_iterator_tag                  iterator_category;
 		typedef T                                                         value_type;
 		typedef T*                                                        pointer;
 		typedef T&                                                        reference;
@@ -171,6 +163,7 @@ namespace eastl
 	public:
 		DequeIterator();
 		DequeIterator(const iterator& x);
+		DequeIterator& operator=(const iterator& x);
 
 		pointer   operator->() const;
 		reference operator*() const;
@@ -236,20 +229,20 @@ namespace eastl
 		T*  mpEnd;              // The end of the current subarray. To consider: remove this member, as it is always equal to 'mpBegin + kDequeSubarraySize'. Given that deque subarrays usually consist of hundreds of bytes, this isn't a massive win. Also, now that we are implementing a zero-allocation new deque policy, mpEnd may in fact not be equal to 'mpBegin + kDequeSubarraySize'.
 		T** mpCurrentArrayPtr;  // Pointer to current subarray. We could alternatively implement this as a list node iterator if the deque used a linked list.
 
-		struct Increment{ };
-		struct Decrement{ };
-		struct FromConst{};
+		struct Increment {};
+		struct Decrement {};
+		struct FromConst {};
 
 		DequeIterator(T** pCurrentArrayPtr, T* pCurrent);
 		DequeIterator(const const_iterator& x, FromConst) : mpCurrent(x.mpCurrent), mpBegin(x.mpBegin), mpEnd(x.mpEnd), mpCurrentArrayPtr(x.mpCurrentArrayPtr){}
 		DequeIterator(const iterator&       x, Increment);
 		DequeIterator(const iterator&       x, Decrement);
 
-		this_type copy(const iterator& first, const iterator& last, true_type);  // true means that value_type has the type_trait has_trivial_relocate,
-		this_type copy(const iterator& first, const iterator& last, false_type); // false means it does not. 
+		this_type move(const iterator& first, const iterator& last, true_type);  // true means that value_type has the type_trait is_trivially_copyable,
+		this_type move(const iterator& first, const iterator& last, false_type); // false means it does not. 
 
-		void copy_backward(const iterator& first, const iterator& last, true_type);  // true means that value_type has the type_trait has_trivial_relocate,
-		void copy_backward(const iterator& first, const iterator& last, false_type); // false means it does not.
+		void move_backward(const iterator& first, const iterator& last, true_type);  // true means that value_type has the type_trait is_trivially_copyable,
+		void move_backward(const iterator& first, const iterator& last, false_type); // false means it does not.
 
 		void SetSubarray(T** pCurrentArrayPtr);
 	};
@@ -268,20 +261,13 @@ namespace eastl
 	{
 		typedef T                                                        value_type;
 		typedef Allocator                                                allocator_type;
-		typedef eastl_size_t                                             size_type;     // See config.h for the definition of eastl_size_t, which defaults to uint32_t.
+		typedef eastl_size_t                                             size_type;     // See config.h for the definition of eastl_size_t, which defaults to size_t.
 		typedef ptrdiff_t                                                difference_type;
 		typedef DequeIterator<T, T*, T&, kDequeSubarraySize>             iterator;
 		typedef DequeIterator<T, const T*, const T&, kDequeSubarraySize> const_iterator;
 
-		#if defined(_MSC_VER) && (_MSC_VER >= 1400) && (_MSC_VER <= 1600) && !EASTL_STD_CPP_ONLY  // _MSC_VER of 1400 means VS2005, 1600 means VS2010. VS2012 generates errors with usage of enum:size_type.
-			enum : size_type {                      // Use Microsoft enum language extension, allowing for smaller debug symbols than using a static const. Users have been affected by this.
-				npos     = (size_type)-1,
-				kMaxSize = (size_type)-2
-			};
-		#else
-			static const size_type npos     = (size_type)-1;      /// 'npos' means non-valid position or simply non-position.
-			static const size_type kMaxSize = (size_type)-2;      /// -1 is reserved for 'npos'. It also happens to be slightly beneficial that kMaxSize is a value less than -1, as it helps us deal with potential integer wraparound issues.
-		#endif
+		static const size_type npos     = (size_type)-1;      /// 'npos' means non-valid position or simply non-position.
+		static const size_type kMaxSize = (size_type)-2;      /// -1 is reserved for 'npos'. It also happens to be slightly beneficial that kMaxSize is a value less than -1, as it helps us deal with potential integer wraparound issues.
 
 		enum
 		{
@@ -290,13 +276,13 @@ namespace eastl
 		  //kNodeSize        = kDequeSubarraySize * sizeof(T)   /// Disabled because it prevents the ability to do this: struct X{ eastl::deque<X, EASTLAllocatorType, 16> mDequeOfSelf; };
 		};
 
+	protected:
 		enum Side       /// Defines the side of the deque: front or back.
 		{
 			kSideFront, /// Identifies the front side of the deque.
 			kSideBack   /// Identifies the back side of the deque.
 		};
 
-	protected:
 		T**             mpPtrArray;         // Array of pointers to subarrays.
 		size_type       mnPtrArraySize;     // Possibly we should store this as T** mpArrayEnd.
 		iterator        mItBegin;           // Where within the subarrays is our beginning.
@@ -314,17 +300,17 @@ namespace eastl
 		void                  set_allocator(const allocator_type& allocator);
 
 	protected:
-		T*   DoAllocateSubarray();
-		void DoFreeSubarray(T* p);
-		void DoFreeSubarrays(T** pBegin, T** pEnd);
+		T*       DoAllocateSubarray();
+		void     DoFreeSubarray(T* p);
+		void     DoFreeSubarrays(T** pBegin, T** pEnd);
 
-		T**  DoAllocatePtrArray(size_type n);
-		void DoFreePtrArray(T** p, size_t n);
+		T**      DoAllocatePtrArray(size_type n);
+		void     DoFreePtrArray(T** p, size_t n);
 
 		iterator DoReallocSubarray(size_type nAdditionalCapacity, Side allocationSide);
 		void     DoReallocPtrArray(size_type nAdditionalCapacity, Side allocationSide);
 
-		void DoInit(size_type n);
+		void     DoInit(size_type n);
 
 	}; // DequeBase
 
@@ -344,7 +330,7 @@ namespace eastl
 	/// but current efforts have resulted in less efficient and more fragile code.
 	/// The logic of this class doesn't lend itself to a clean implementation. 
 	/// It turns out that deques are one of the least likely classes you'd want this
-	/// behaviour in, so until this functionality becomes very imporantant to somebody,
+	/// behaviour in, so until this functionality becomes very important to somebody,
 	/// we will leave it as-is. It can probably be solved by adding some extra code to
 	/// the Do* functions and adding good comments explaining the situation.
 	/// 
@@ -352,7 +338,6 @@ namespace eastl
 	class deque : public DequeBase<T, Allocator, kDequeSubarraySize>
 	{
 	public:
-
 		typedef DequeBase<T, Allocator, kDequeSubarraySize>              base_type;
 		typedef deque<T, Allocator, kDequeSubarraySize>                  this_type;
 		typedef T                                                        value_type;
@@ -368,6 +353,12 @@ namespace eastl
 		typedef typename base_type::difference_type                      difference_type;
 		typedef typename base_type::allocator_type                       allocator_type;
 
+		using base_type::npos;
+
+		static_assert(!is_const<value_type>::value, "deque<T>::value_type must be non-const.");
+		static_assert(!is_volatile<value_type>::value, "deque<T>::value_type must be non-volatile.");
+
+	protected:
 		using base_type::kSideFront;
 		using base_type::kSideBack;
 		using base_type::mpPtrArray;
@@ -375,7 +366,6 @@ namespace eastl
 		using base_type::mItBegin;
 		using base_type::mItEnd;
 		using base_type::mAllocator;
-		using base_type::npos;
 		using base_type::DoAllocateSubarray;
 		using base_type::DoFreeSubarray;
 		using base_type::DoFreeSubarrays;
@@ -390,12 +380,12 @@ namespace eastl
 		explicit deque(size_type n, const allocator_type& allocator = EASTL_DEQUE_DEFAULT_ALLOCATOR);
 		deque(size_type n, const value_type& value, const allocator_type& allocator = EASTL_DEQUE_DEFAULT_ALLOCATOR);
 		deque(const this_type& x);
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			deque(this_type&& x);
-			deque(this_type&& x, const allocator_type& allocator);
-		#endif
+		deque(this_type&& x);
+		deque(this_type&& x, const allocator_type& allocator);
 		deque(std::initializer_list<value_type> ilist, const allocator_type& allocator = EASTL_DEQUE_DEFAULT_ALLOCATOR);
 
+		// note: this has pre-C++11 semantics:
+		// this constructor is equivalent to the constructor deque(static_cast<size_type>(first), static_cast<value_type>(last)) if InputIterator is an integral type.
 		template <typename InputIterator>
 		deque(InputIterator first, InputIterator last); // allocator arg removed because VC7.1 fails on the default arg. To do: Make a second version of this function without a default arg.
 
@@ -403,18 +393,16 @@ namespace eastl
 
 		this_type& operator=(const this_type& x);
 		this_type& operator=(std::initializer_list<value_type> ilist);
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			this_type& operator=(this_type&& x);
-		#endif
+		this_type& operator=(this_type&& x);
 
 		void swap(this_type& x);
 
 		void assign(size_type n, const value_type& value);
+		void assign(std::initializer_list<value_type> ilist);
 
-		template <typename InputIterator>                        // It turns out that the C++ std::deque<int, int> specifies a two argument
+		template <typename InputIterator>                       // It turns out that the C++ std::deque<int, int> specifies a two argument
 		void assign(InputIterator first, InputIterator last);   // version of assign that takes (int size, int value). These are not 
 																// iterators, so we need to do a template compiler trick to do the right thing.
-		void assign(std::initializer_list<value_type> ilist);
 
 		iterator       begin() EA_NOEXCEPT;
 		const_iterator begin() const EA_NOEXCEPT;
@@ -455,54 +443,37 @@ namespace eastl
 
 		void      push_front(const value_type& value);
 		reference push_front();
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			void  push_front(value_type&& value);
-		#endif
+		void      push_front(value_type&& value);
 
 		void      push_back(const value_type& value);
 		reference push_back();
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			void  push_back(value_type&& value);
-		#endif
+		void      push_back(value_type&& value);
 
 		void pop_front();
 		void pop_back();
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-			template<class... Args>
-			iterator emplace(const_iterator position, Args&&... args);
+		template<class... Args>
+		iterator emplace(const_iterator position, Args&&... args);
 
-			template<class... Args>
-			void emplace_front(Args&&... args);
+		template<class... Args>
+		reference emplace_front(Args&&... args);
 
-			template<class... Args>
-			void emplace_back(Args&&... args);
-		#else
-			#if EASTL_MOVE_SEMANTICS_ENABLED
-			  iterator emplace(const_iterator position, value_type&& value);
-			  void     emplace_front(value_type&& value);
-			  void     emplace_back(value_type&& value);
-			#endif
-
-			iterator emplace(const_iterator position, const value_type& value);
-			void     emplace_front(const value_type& value);
-			void     emplace_back(const value_type& value);
-		#endif
+		template<class... Args>
+		reference emplace_back(Args&&... args);
 
 		iterator insert(const_iterator position, const value_type& value);
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			iterator insert(const_iterator position, value_type&& value);
-		#endif
-		void insert(const_iterator position, size_type n, const value_type& value);
-
-		template <typename InputIterator>
-		void insert(const_iterator position, InputIterator first, InputIterator last);
-
+		iterator insert(const_iterator position, value_type&& value);
+		iterator insert(const_iterator position, size_type n, const value_type& value);
 		iterator insert(const_iterator position, std::initializer_list<value_type> ilist);
 
-		iterator erase(const_iterator position);
-		iterator erase(const_iterator first, const_iterator last);
+		// note: this has pre-C++11 semantics:
+		// this function is equivalent to insert(const_iterator position, static_cast<size_type>(first), static_cast<value_type>(last)) if InputIterator is an integral type.
+		// ie. same as insert(const_iterator position, size_type n, const value_type& value)
+		template <typename InputIterator>
+		iterator insert(const_iterator position, InputIterator first, InputIterator last);
 
+		iterator         erase(const_iterator position);
+		iterator         erase(const_iterator first, const_iterator last);
 		reverse_iterator erase(reverse_iterator position);
 		reverse_iterator erase(reverse_iterator first, reverse_iterator last);
 
@@ -520,10 +491,10 @@ namespace eastl
 		void DoInit(InputIterator first, InputIterator last, false_type);
 
 		template <typename InputIterator>
-		void DoInitFromIterator(InputIterator first, InputIterator last, EASTL_ITC_NS::input_iterator_tag);
+		void DoInitFromIterator(InputIterator first, InputIterator last, eastl::input_iterator_tag);
 
 		template <typename ForwardIterator>
-		void DoInitFromIterator(ForwardIterator first, ForwardIterator last, EASTL_ITC_NS::forward_iterator_tag);
+		void DoInitFromIterator(ForwardIterator first, ForwardIterator last, eastl::forward_iterator_tag);
 
 		void DoFillInit(const value_type& value);
 
@@ -536,15 +507,18 @@ namespace eastl
 		void DoAssignValues(size_type n, const value_type& value);
 
 		template <typename Integer>
-		void DoInsert(const const_iterator& position, Integer n, Integer value, true_type);
+		iterator DoInsert(const const_iterator& position, Integer n, Integer value, true_type);
 
 		template <typename InputIterator>
-		void DoInsert(const const_iterator& position, const InputIterator& first, const InputIterator& last, false_type);
+		iterator DoInsert(const const_iterator& position, const InputIterator& first, const InputIterator& last, false_type);
 
 		template <typename InputIterator>
-		void DoInsertFromIterator(const_iterator position, const InputIterator& first, const InputIterator& last, EASTL_ITC_NS::forward_iterator_tag);
+		iterator DoInsertFromIterator(const_iterator position, const InputIterator& first, const InputIterator& last, eastl::input_iterator_tag);
 
-		void DoInsertValues(const_iterator position, size_type n, const value_type& value);
+		template <typename ForwardIterator>
+		iterator DoInsertFromIterator(const_iterator position, const ForwardIterator& first, const ForwardIterator& last, eastl::forward_iterator_tag);
+
+		iterator DoInsertValues(const_iterator position, size_type n, const value_type& value);
 
 		void DoSwap(this_type& x);
 	}; // class deque
@@ -605,6 +579,7 @@ namespace eastl
 		{
 			DoFreeSubarrays(mItBegin.mpCurrentArrayPtr, mItEnd.mpCurrentArrayPtr + 1);
 			DoFreePtrArray(mpPtrArray, mnPtrArraySize);
+			mpPtrArray = nullptr;
 		}
 	}
 
@@ -631,7 +606,9 @@ namespace eastl
 		// The only time you can set an allocator is with an empty unused container, such as right after construction.
 		if(EASTL_LIKELY(mAllocator != allocator))
 		{
-			if(EASTL_LIKELY(mpPtrArray && (mItBegin.mpCurrentArrayPtr == mItEnd.mpCurrentArrayPtr))) // If we are empty and so can safely deallocate the existing memory... We could also test for empty(), but that's a more expensive calculation and more involved clearing, though it would be more flexible.
+			// our deque implementation always has allocations for mpPtrArray. this set_allocator() is unlike other container's set_allocator() member function
+			// in that it actually frees allocations when assigning the allocator. this lack of consistency is unfortunate.
+			if(EASTL_LIKELY(mpPtrArray && (mItBegin.mpCurrent == mItEnd.mpCurrent))) // is the container empty?
 			{
 				DoFreeSubarrays(mItBegin.mpCurrentArrayPtr, mItEnd.mpCurrentArrayPtr + 1);
 				DoFreePtrArray(mpPtrArray, mnPtrArraySize);
@@ -641,7 +618,7 @@ namespace eastl
 			}
 			else
 			{
-				EASTL_FAIL_MSG("DequeBase::set_allocator -- atempt to change allocator after allocating elements.");
+				EASTL_THROW_MSG_OR_ASSERT(std::logic_error, "deque::set_allocator -- attempt to change allocator after inserting elements.");
 			}
 		}
 	}
@@ -864,16 +841,15 @@ namespace eastl
 		//if(n)
 		//{
 			const size_type nNewPtrArraySize = (size_type)((n / kDequeSubarraySize) + 1); // Always have at least one, even if n is zero.
-			const size_type kMinPtrArraySize_ = kMinPtrArraySize; // GCC 4.0 blows up unless we define this constant.
+			const size_type kMinPtrArraySize_ = kMinPtrArraySize;
 
-			mnPtrArraySize = eastl::max_alt(kMinPtrArraySize_, (nNewPtrArraySize + 2)); // GCC 4.0 blows up on this.
+			mnPtrArraySize = eastl::max_alt(kMinPtrArraySize_, (nNewPtrArraySize + 2)); 
 			mpPtrArray     = DoAllocatePtrArray(mnPtrArraySize);
 
 			value_type** const pPtrArrayBegin   = (mpPtrArray + ((mnPtrArraySize - nNewPtrArraySize) / 2)); // Try to place it in the middle.
 			value_type** const pPtrArrayEnd     = pPtrArrayBegin + nNewPtrArraySize;
 			value_type**       pPtrArrayCurrent = pPtrArrayBegin;
 
-			// I am sorry for the mess of #ifs and indentations below. 
 			#if EASTL_EXCEPTIONS_ENABLED
 				try
 				{
@@ -946,6 +922,17 @@ namespace eastl
 		: mpCurrent(x.mpCurrent), mpBegin(x.mpBegin), mpEnd(x.mpEnd), mpCurrentArrayPtr(x.mpCurrentArrayPtr)
 	{
 		// Empty
+	}
+
+	template <typename T, typename Pointer, typename Reference, unsigned kDequeSubarraySize>
+	DequeIterator<T, Pointer, Reference, kDequeSubarraySize>& DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::operator=(const iterator& x)
+	{
+		mpCurrent = x.mpCurrent;
+		mpBegin = x.mpBegin;
+		mpEnd = x.mpEnd;
+		mpCurrentArrayPtr = x.mpCurrentArrayPtr;
+
+		return *this;
 	}
 
 
@@ -1085,44 +1072,43 @@ namespace eastl
 
 	template <typename T, typename Pointer, typename Reference, unsigned kDequeSubarraySize>
 	typename DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::this_type
-	DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::copy(const iterator& first, const iterator& last, true_type)
+	DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::move(const iterator& first, const iterator& last, true_type)
 	{
 		// To do: Implement this as a loop which does memcpys between subarrays appropriately.
 		//        Currently we only do memcpy if the entire operation occurs within a single subarray.
 		if((first.mpBegin == last.mpBegin) && (first.mpBegin == mpBegin)) // If all operations are within the same subarray, implement the operation as a memmove.
 		{
-			// The following is equivalent to: eastl::copy(first.mpCurrent, last.mpCurrent, mpCurrent);
 			memmove(mpCurrent, first.mpCurrent, (size_t)((uintptr_t)last.mpCurrent - (uintptr_t)first.mpCurrent));
 			return *this + (last.mpCurrent - first.mpCurrent);
 		}
-		return eastl::copy(first, last, *this);
+		return eastl::move(first, last, *this);
 	}
 
 
 	template <typename T, typename Pointer, typename Reference, unsigned kDequeSubarraySize>
 	typename DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::this_type
-	DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::copy(const iterator& first, const iterator& last, false_type)
+	DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::move(const iterator& first, const iterator& last, false_type)
 	{
-		return eastl::copy(first, last, *this);
+		return eastl::move(first, last, *this);
 	}
 
 
 	template <typename T, typename Pointer, typename Reference, unsigned kDequeSubarraySize>
-	void DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::copy_backward(const iterator& first, const iterator& last, true_type)
+	void DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::move_backward(const iterator& first, const iterator& last, true_type)
 	{
 		// To do: Implement this as a loop which does memmoves between subarrays appropriately.
 		//        Currently we only do memcpy if the entire operation occurs within a single subarray.
 		if((first.mpBegin == last.mpBegin) && (first.mpBegin == mpBegin)) // If all operations are within the same subarray, implement the operation as a memcpy.
 			memmove(mpCurrent - (last.mpCurrent - first.mpCurrent), first.mpCurrent, (size_t)((uintptr_t)last.mpCurrent - (uintptr_t)first.mpCurrent));
 		else
-			eastl::copy_backward(first, last, *this);
+			eastl::move_backward(first, last, *this);
 	}
 
 
 	template <typename T, typename Pointer, typename Reference, unsigned kDequeSubarraySize>
-	void DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::copy_backward(const iterator& first, const iterator& last, false_type)
+	void DequeIterator<T, Pointer, Reference, kDequeSubarraySize>::move_backward(const iterator& first, const iterator& last, false_type)
 	{
-		eastl::copy_backward(first, last, *this);
+		eastl::move_backward(first, last, *this);
 	}
 
 
@@ -1267,22 +1253,20 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		inline deque<T, Allocator, kDequeSubarraySize>::deque(this_type&& x)
-		  : base_type((size_type)0, x.mAllocator)
-		{
-			swap(x);
-		}
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	inline deque<T, Allocator, kDequeSubarraySize>::deque(this_type&& x)
+	  : base_type((size_type)0, x.mAllocator)
+	{
+		swap(x);
+	}
 
 
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		inline deque<T, Allocator, kDequeSubarraySize>::deque(this_type&& x, const allocator_type& allocator)
-		  : base_type((size_type)0, allocator)
-		{
-			swap(x); // member swap handles the case that x has a different allocator than our allocator by doing a copy.
-		}
-	#endif
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	inline deque<T, Allocator, kDequeSubarraySize>::deque(this_type&& x, const allocator_type& allocator)
+	  : base_type((size_type)0, allocator)
+	{
+		swap(x); // member swap handles the case that x has a different allocator than our allocator by doing a copy.
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -1346,19 +1330,18 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		inline typename deque<T, Allocator, kDequeSubarraySize>::this_type& 
-		deque<T, Allocator, kDequeSubarraySize>::operator=(this_type&& x)
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	inline typename deque<T, Allocator, kDequeSubarraySize>::this_type& 
+	deque<T, Allocator, kDequeSubarraySize>::operator=(this_type&& x)
+	{
+		if(this != &x)
 		{
-			if(this != &x)
-			{
-				set_capacity(0); // To consider: Are we really required to clear here? x is going away soon and will clear itself in its dtor.
-				swap(x);         // member swap handles the case that x has a different allocator than our allocator by doing a copy.
-			}
-			return *this; 
+			this_type temp(mAllocator);
+			swap(temp);
+			swap(x);         // member swap handles the case that x has a different allocator than our allocator by doing a copy.
 		}
-	#endif
+		return *this; 
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -1528,7 +1511,8 @@ namespace eastl
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	inline void deque<T, Allocator, kDequeSubarraySize>::shrink_to_fit()
 	{
-		return set_capacity(0);
+		this_type x(eastl::make_move_iterator(begin()), eastl::make_move_iterator(end()));
+		swap(x);
 	}
 
 
@@ -1560,11 +1544,12 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::reference
 	deque<T, Allocator, kDequeSubarraySize>::operator[](size_type n)
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED    // We allow the user to use a reference to v[0] of an empty container.
-			if(EASTL_UNLIKELY((n != 0) && n >= (size_type)(mItEnd - mItBegin)))
+		#if EASTL_ASSERT_ENABLED && EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
+			if (EASTL_UNLIKELY(n >= (size_type)(mItEnd - mItBegin)))
 				EASTL_FAIL_MSG("deque::operator[] -- out of range");
 		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY(n >= (size_type)(mItEnd - mItBegin)))
+			// We allow taking a reference to deque[0]
+			if (EASTL_UNLIKELY((n != 0) && n >= (size_type)(mItEnd - mItBegin)))
 				EASTL_FAIL_MSG("deque::operator[] -- out of range");
 		#endif
 
@@ -1582,11 +1567,12 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::const_reference
 	deque<T, Allocator, kDequeSubarraySize>::operator[](size_type n) const
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED    // We allow the user to use a reference to v[0] of an empty container.
-			if(EASTL_UNLIKELY((n != 0) && n >= (size_type)(mItEnd - mItBegin)))
+		#if EASTL_ASSERT_ENABLED && EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
+			if (EASTL_UNLIKELY(n >= (size_type)(mItEnd - mItBegin)))
 				EASTL_FAIL_MSG("deque::operator[] -- out of range");
 		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY(n >= (size_type)(mItEnd - mItBegin)))
+			// We allow the user to use a reference to deque[0] of an empty container.
+			if (EASTL_UNLIKELY((n != 0) && n >= (size_type)(mItEnd - mItBegin)))
 				EASTL_FAIL_MSG("deque::operator[] -- out of range");
 		#endif
 
@@ -1634,11 +1620,11 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::reference
 	deque<T, Allocator, kDequeSubarraySize>::front()
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
-			// We allow the user to reference an empty container.
-		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
+		#if EASTL_ASSERT_ENABLED && EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
+			if (EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
 				EASTL_FAIL_MSG("deque::front -- empty deque");
+		#else
+			// We allow the user to reference an empty container.
 		#endif
 
 		return *mItBegin;
@@ -1649,11 +1635,11 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::const_reference
 	deque<T, Allocator, kDequeSubarraySize>::front() const
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
-			// We allow the user to reference an empty container.
-		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
+		#if EASTL_ASSERT_ENABLED && EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
+			if (EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
 				EASTL_FAIL_MSG("deque::front -- empty deque");
+		#else
+			// We allow the user to reference an empty container.
 		#endif
 
 		return *mItBegin;
@@ -1664,10 +1650,10 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::reference
 	deque<T, Allocator, kDequeSubarraySize>::back()
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
-			// We allow the user to reference an empty container.
-		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
+		#if EASTL_ASSERT_ENABLED
+			// Decrementing an iterator with an empty container will result in undefined behaviour.
+			// specifically: the iterator decrement will apply pointer arithmetic to a nullptr (depending on the situation either mpCurrentArrayPtr or mpBegin).
+			if (EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
 				EASTL_FAIL_MSG("deque::back -- empty deque");
 		#endif
 
@@ -1679,10 +1665,10 @@ namespace eastl
 	typename deque<T, Allocator, kDequeSubarraySize>::const_reference
 	deque<T, Allocator, kDequeSubarraySize>::back() const
 	{
-		#if EASTL_EMPTY_REFERENCE_ASSERT_ENABLED
-			// We allow the user to reference an empty container.
-		#elif EASTL_ASSERT_ENABLED
-			if(EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
+		#if EASTL_ASSERT_ENABLED
+			// Decrementing an iterator with an empty container will result in undefined behaviour.
+			// specifically: the iterator decrement will apply pointer arithmetic to a nullptr (depending on the situation either mpCurrentArrayPtr or mpBegin).
+			if (EASTL_UNLIKELY((size_type)(mItEnd == mItBegin)))
 				EASTL_FAIL_MSG("deque::back -- empty deque");
 		#endif
 
@@ -1697,13 +1683,11 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		void deque<T, Allocator, kDequeSubarraySize>::push_front(value_type&& value)
-		{
-			emplace_front(eastl::move(value));
-		}
-	#endif
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	void deque<T, Allocator, kDequeSubarraySize>::push_front(value_type&& value)
+	{
+		emplace_front(eastl::move(value));
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -1722,13 +1706,11 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		void deque<T, Allocator, kDequeSubarraySize>::push_back(value_type&& value)
-		{
-			emplace_back(eastl::move(value));
-		}
-	#endif
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	void deque<T, Allocator, kDequeSubarraySize>::push_back(value_type&& value)
+	{
+		emplace_back(eastl::move(value));
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -1800,400 +1782,138 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		template<class... Args>
-		typename deque<T, Allocator, kDequeSubarraySize>::iterator
-		deque<T, Allocator, kDequeSubarraySize>::emplace(const_iterator position, Args&&... args)
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	template<class... Args>
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::emplace(const_iterator position, Args&&... args)
+	{
+		if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If we are doing the same thing as push_back...
 		{
-			if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If we are doing the same thing as push_back...
-			{
-				emplace_back(eastl::forward<Args>(args)...);
-				return iterator(mItEnd, typename iterator::Decrement()); // Unfortunately, we need to make an iterator here, as the above push_back is an operation that can invalidate existing iterators.
-			}
-			else if(EASTL_UNLIKELY(position.mpCurrent == mItBegin.mpCurrent)) // If we are doing the same thing as push_front...
-			{
-				emplace_front(eastl::forward<Args>(args)...);
-				return mItBegin;
-			}
-
-			iterator              itPosition(position, typename iterator::FromConst());
-			#if EASTL_USE_FORWARD_WORKAROUND
-				auto valueSaved = value_type(eastl::forward<Args>(args)...);  //Workaround for compiler bug in VS2013
-			#else
-				value_type  valueSaved(eastl::forward<Args>(args)...); // We need to save this because value may come from within our container. It would be somewhat tedious to make a workaround that could avoid this.
-			#endif
-			const difference_type i(itPosition - mItBegin);
-
-			#if EASTL_ASSERT_ENABLED
-				EASTL_ASSERT(!empty()); // The push_front and push_back calls below assume that we are non-empty. It turns out this is never called unless so.
-
-				if(EASTL_UNLIKELY(!(validate_iterator(itPosition) & isf_valid)))
-					EASTL_FAIL_MSG("deque::emplace -- invalid iterator");
-			#endif
-
-			if(i < (difference_type)(size() / 2)) // Should we insert at the front or at the back? We divide the range in half.
-			{
-				emplace_front(*mItBegin); // This operation potentially invalidates all existing iterators and so we need to assign them anew relative to mItBegin below.
-
-				itPosition = mItBegin + i;
-
-				const iterator newPosition  (itPosition, typename iterator::Increment());
-					  iterator oldBegin     (mItBegin,   typename iterator::Increment());
-				const iterator oldBeginPlus1(oldBegin,   typename iterator::Increment());
-
-				oldBegin.copy(oldBeginPlus1, newPosition, eastl::has_trivial_relocate<value_type>());
-			}
-			else
-			{
-				emplace_back(*iterator(mItEnd, typename iterator::Decrement()));
-
-				itPosition = mItBegin + i;
-
-					  iterator oldBack      (mItEnd,  typename iterator::Decrement());
-				const iterator oldBackMinus1(oldBack, typename iterator::Decrement());
-
-				oldBack.copy_backward(itPosition, oldBackMinus1, eastl::has_trivial_relocate<value_type>());
-			}
-
-			*itPosition = eastl::move(valueSaved);
-
-			return itPosition;
+			emplace_back(eastl::forward<Args>(args)...);
+			return iterator(mItEnd, typename iterator::Decrement()); // Unfortunately, we need to make an iterator here, as the above push_back is an operation that can invalidate existing iterators.
+		}
+		else if(EASTL_UNLIKELY(position.mpCurrent == mItBegin.mpCurrent)) // If we are doing the same thing as push_front...
+		{
+			emplace_front(eastl::forward<Args>(args)...);
+			return mItBegin;
 		}
 
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		template<class... Args>
-		void deque<T, Allocator, kDequeSubarraySize>::emplace_front(Args&&... args)
-		{
-			if(mItBegin.mpCurrent != mItBegin.mpBegin)                                         // If we have room in the first subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
-				::new((void*)--mItBegin.mpCurrent) value_type(eastl::forward<Args>(args)...);  // Construct in place. If args is a single arg of type value_type&& then it this will be a move construction.
-			else
-			{
-				// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-				#if EASTL_USE_FORWARD_WORKAROUND
-					auto valueSaved = value_type(eastl::forward<Args>(args)...);  //Workaround for compiler bug in VS2013
-				#else
-					value_type  valueSaved(eastl::forward<Args>(args)...);                          // We need to make a temporary, because args may be a value_type that comes from within our container and the operations below may change the container. But we can use move instead of copy.
-				#endif
+		iterator              itPosition(position, typename iterator::FromConst());
+		value_type  valueSaved(eastl::forward<Args>(args)...); // We need to save this because value may come from within our container. It would be somewhat tedious to make a workaround that could avoid this.
+		const difference_type i(itPosition - mItBegin);
 
-				if(mItBegin.mpCurrentArrayPtr == mpPtrArray)                                   // If there are no more pointers in front of the current (first) one...
-					DoReallocPtrArray(1, kSideFront);
+		#if EASTL_ASSERT_ENABLED
+			EASTL_ASSERT(!empty()); // The push_front and push_back calls below assume that we are non-empty. It turns out this is never called unless so.
 
-				mItBegin.mpCurrentArrayPtr[-1] = DoAllocateSubarray();
-
-				#if EASTL_EXCEPTIONS_ENABLED
-					try
-					{
-				#endif
-						mItBegin.SetSubarray(mItBegin.mpCurrentArrayPtr - 1);
-						mItBegin.mpCurrent = mItBegin.mpEnd - 1;
-						::new((void*)mItBegin.mpCurrent) value_type(eastl::move(valueSaved));
-				#if EASTL_EXCEPTIONS_ENABLED
-					}
-					catch(...)
-					{
-						++mItBegin; // The exception could only occur in the new operation above, after we have incremented mItBegin. So we need to undo it.
-						DoFreeSubarray(mItBegin.mpCurrentArrayPtr[-1]);
-						throw;
-					}
-				#endif
-			}
-		}
-
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		template<class... Args>
-		void deque<T, Allocator, kDequeSubarraySize>::emplace_back(Args&&... args)
-		{
-			if((mItEnd.mpCurrent + 1) != mItEnd.mpEnd)                                       // If we have room in the last subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
-				::new((void*)mItEnd.mpCurrent++) value_type(eastl::forward<Args>(args)...);  // Construct in place. If args is a single arg of type value_type&& then it this will be a move construction.
-			else
-			{
-				// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-				#if EASTL_USE_FORWARD_WORKAROUND
-					auto valueSaved = value_type(eastl::forward<Args>(args)...);  //Workaround for compiler bug in VS2013
-				#else
-					value_type  valueSaved(eastl::forward<Args>(args)...);                          // We need to make a temporary, because args may be a value_type that comes from within our container and the operations below may change the container. But we can use move instead of copy.
-				#endif
-				if(((mItEnd.mpCurrentArrayPtr - mpPtrArray) + 1) >= (difference_type)mnPtrArraySize) // If there are no more pointers after the current (last) one.
-					DoReallocPtrArray(1, kSideBack);
-
-				mItEnd.mpCurrentArrayPtr[1] = DoAllocateSubarray();
-
-				#if EASTL_EXCEPTIONS_ENABLED
-					try
-					{
-				#endif
-						::new((void*)mItEnd.mpCurrent) value_type(eastl::move(valueSaved)); // We can move valueSaved into position.
-						mItEnd.SetSubarray(mItEnd.mpCurrentArrayPtr + 1);
-						mItEnd.mpCurrent = mItEnd.mpBegin;
-				#if EASTL_EXCEPTIONS_ENABLED
-					}
-					catch(...)
-					{
-						// No need to execute '--mItEnd', as the exception could only occur in the new operation above before we set mItEnd.
-						DoFreeSubarray(mItEnd.mpCurrentArrayPtr[1]);
-						throw;
-					}
-				#endif
-			}
-		}
-	#else
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-		// Note: The following two sets of three functions are nearly copies of the above three functions.
-		// We (nearly) duplicate code here instead of trying to fold the all nine of these functions into 
-		// three more generic functions because: 1) you can't really make just three functions but rather 
-		// would need to break them apart somewhat, and 2) these duplications are eventually going away 
-		// because they aren't needed with C++11 compilers, though that may not be until the year 2020.
-		////////////////////////////////////////////////////////////////////////////////////////////////////
-
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-			typename deque<T, Allocator, kDequeSubarraySize>::iterator
-			deque<T, Allocator, kDequeSubarraySize>::emplace(const_iterator position, value_type&& value)
-			{
-				if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If we are doing the same thing as push_back...
-				{
-					emplace_back(eastl::move(value));
-					return iterator(mItEnd, typename iterator::Decrement()); // Unfortunately, we need to make an iterator here, as the above push_back is an operation that can invalidate existing iterators.
-				}
-				else if(EASTL_UNLIKELY(position.mpCurrent == mItBegin.mpCurrent)) // If we are doing the same thing as push_front...
-				{
-					emplace_front(eastl::move(value));
-					return mItBegin;
-				}
-
-				iterator              itPosition(position, typename iterator::FromConst());
-				value_type            valueSaved(eastl::move(value)); // We need to save this because value may come from within our container. It would be somewhat tedious to make a workaround that could avoid this.
-				const difference_type i(itPosition - mItBegin);
-
-				#if EASTL_ASSERT_ENABLED
-					EASTL_ASSERT(!empty()); // The push_front and push_back calls below assume that we are non-empty. It turns out this is never called unless so.
-
-					if(EASTL_UNLIKELY(!(validate_iterator(itPosition) & isf_valid)))
-						EASTL_FAIL_MSG("deque::emplace -- invalid iterator");
-				#endif
-
-				if(i < (difference_type)(size() / 2)) // Should we insert at the front or at the back? We divide the range in half.
-				{
-					emplace_front(*mItBegin); // This operation potentially invalidates all existing iterators and so we need to assign them anew relative to mItBegin below.
-
-					itPosition = mItBegin + i;
-
-					const iterator newPosition  (itPosition, typename iterator::Increment());
-						  iterator oldBegin     (mItBegin,   typename iterator::Increment());
-					const iterator oldBeginPlus1(oldBegin,   typename iterator::Increment());
-
-					oldBegin.copy(oldBeginPlus1, newPosition, eastl::has_trivial_relocate<value_type>());
-				}
-				else
-				{
-					emplace_back(*iterator(mItEnd, typename iterator::Decrement()));
-
-					itPosition = mItBegin + i;
-
-						  iterator oldBack      (mItEnd,  typename iterator::Decrement());
-					const iterator oldBackMinus1(oldBack, typename iterator::Decrement());
-
-					oldBack.copy_backward(itPosition, oldBackMinus1, eastl::has_trivial_relocate<value_type>());
-				}
-
-				*itPosition = eastl::move(valueSaved);
-
-				return itPosition;
-			}
-
-			template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-			void deque<T, Allocator, kDequeSubarraySize>::emplace_front(value_type&& value)
-			{
-				if(mItBegin.mpCurrent != mItBegin.mpBegin)                              // If we have room in the first subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
-					::new((void*)--mItBegin.mpCurrent) value_type(eastl::move(value));  // Move value into position.
-				else
-				{
-					// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-					value_type valueSaved(eastl::move(value));                          // We need to make a temporary, because value may come from within our container and the operations below may change the container. But we can use move instead of copy.
-
-					if(mItBegin.mpCurrentArrayPtr == mpPtrArray)                        // If there are no more pointers in front of the current (first) one...
-						DoReallocPtrArray(1, kSideFront);
-
-					mItBegin.mpCurrentArrayPtr[-1] = DoAllocateSubarray();
-
-					#if EASTL_EXCEPTIONS_ENABLED
-						try
-						{
-					#endif
-							mItBegin.SetSubarray(mItBegin.mpCurrentArrayPtr - 1);
-							mItBegin.mpCurrent = mItBegin.mpEnd - 1;
-							::new((void*)mItBegin.mpCurrent) value_type(eastl::move(valueSaved));
-					#if EASTL_EXCEPTIONS_ENABLED
-						}
-						catch(...)
-						{
-							++mItBegin; // The exception could only occur in the new operation above, after we have incremented mItBegin. So we need to undo it.
-							DoFreeSubarray(mItBegin.mpCurrentArrayPtr[-1]);
-							throw;
-						}
-					#endif
-				}
-			}
-
-			template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-			void deque<T, Allocator, kDequeSubarraySize>::emplace_back(value_type&& value)
-			{
-				if((mItEnd.mpCurrent + 1) != mItEnd.mpEnd)                              // If we have room in the last subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
-					::new((void*)mItEnd.mpCurrent++) value_type(eastl::move(value));    // Move value into position. 
-				else
-				{
-					// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-					value_type valueSaved(eastl::move(value));                          // We need to make a temporary, because value may come from within our container and the operations below may change the container. But we can use move instead of copy.
-
-					if(((mItEnd.mpCurrentArrayPtr - mpPtrArray) + 1) >= (difference_type)mnPtrArraySize) // If there are no more pointers after the current (last) one.
-						DoReallocPtrArray(1, kSideBack);
-
-					mItEnd.mpCurrentArrayPtr[1] = DoAllocateSubarray();
-
-					#if EASTL_EXCEPTIONS_ENABLED
-						try
-						{
-					#endif
-							::new((void*)mItEnd.mpCurrent) value_type(eastl::move(valueSaved)); // We can move valueSaved into position.
-							mItEnd.SetSubarray(mItEnd.mpCurrentArrayPtr + 1);
-							mItEnd.mpCurrent = mItEnd.mpBegin;
-					#if EASTL_EXCEPTIONS_ENABLED
-						}
-						catch(...)
-						{
-							// No need to execute '--mItEnd', as the exception could only occur in the new operation above before we set mItEnd.
-							DoFreeSubarray(mItEnd.mpCurrentArrayPtr[1]);
-							throw;
-						}
-					#endif
-				}
-			}
+			if(EASTL_UNLIKELY(!(validate_iterator(itPosition) & isf_valid)))
+				EASTL_FAIL_MSG("deque::emplace -- invalid iterator");
 		#endif
 
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		typename deque<T, Allocator, kDequeSubarraySize>::iterator
-		deque<T, Allocator, kDequeSubarraySize>::emplace(const_iterator position, const value_type& value)
+		if(i < (difference_type)(size() / 2)) // Should we insert at the front or at the back? We divide the range in half.
 		{
-			if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If we are doing the same thing as push_back...
-			{
-				emplace_back(value);
-				return iterator(mItEnd, typename iterator::Decrement()); // Unfortunately, we need to make an iterator here, as the above push_back is an operation that can invalidate existing iterators.
-			}
-			else if(EASTL_UNLIKELY(position.mpCurrent == mItBegin.mpCurrent)) // If we are doing the same thing as push_front...
-			{
-				emplace_front(value);
-				return mItBegin;
-			}
+			emplace_front(eastl::move(*mItBegin)); // This operation potentially invalidates all existing iterators and so we need to assign them anew relative to mItBegin below.
 
-			iterator              itPosition(position, typename iterator::FromConst());
-			value_type            valueSaved(value); // We need to save this because value may come from within our container. It would be somewhat tedious to make a workaround that could avoid this.
-			const difference_type i(itPosition - mItBegin);
+			itPosition = mItBegin + i;
 
-			#if EASTL_ASSERT_ENABLED
-				EASTL_ASSERT(!empty()); // The push_front and push_back calls below assume that we are non-empty. It turns out this is never called unless so.
+			const iterator newPosition  (itPosition, typename iterator::Increment());
+				  iterator oldBegin     (mItBegin,   typename iterator::Increment());
+			const iterator oldBeginPlus1(oldBegin,   typename iterator::Increment());
 
-				if(EASTL_UNLIKELY(!(validate_iterator(itPosition) & isf_valid)))
-					EASTL_FAIL_MSG("deque::emplace -- invalid iterator");
+			oldBegin.move(oldBeginPlus1, newPosition, eastl::is_trivially_copyable<value_type>());
+		}
+		else
+		{
+			emplace_back(eastl::move(*iterator(mItEnd, typename iterator::Decrement())));
+
+			itPosition = mItBegin + i;
+
+				  iterator oldBack      (mItEnd,  typename iterator::Decrement());
+			const iterator oldBackMinus1(oldBack, typename iterator::Decrement());
+
+			oldBack.move_backward(itPosition, oldBackMinus1, eastl::is_trivially_copyable<value_type>());
+		}
+
+		*itPosition = eastl::move(valueSaved);
+
+		return itPosition;
+	}
+
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	template<class... Args>
+	typename deque<T, Allocator, kDequeSubarraySize>::reference deque<T, Allocator, kDequeSubarraySize>::emplace_front(Args&&... args)
+	{
+		if(mItBegin.mpCurrent != mItBegin.mpBegin)                                         // If we have room in the first subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
+			detail::allocator_construct(mAllocator, --mItBegin.mpCurrent, eastl::forward<Args>(args)...);
+		else
+		{
+			// To consider: Detect if value isn't coming from within this container and handle that efficiently.
+			value_type  valueSaved(eastl::forward<Args>(args)...);                          // We need to make a temporary, because args may be a value_type that comes from within our container and the operations below may change the container. But we can use move instead of copy.
+
+			if(mItBegin.mpCurrentArrayPtr == mpPtrArray)                                   // If there are no more pointers in front of the current (first) one...
+				DoReallocPtrArray(1, kSideFront);
+
+			mItBegin.mpCurrentArrayPtr[-1] = DoAllocateSubarray();
+
+			#if EASTL_EXCEPTIONS_ENABLED
+				try
+				{
+			#endif
+					mItBegin.SetSubarray(mItBegin.mpCurrentArrayPtr - 1);
+					mItBegin.mpCurrent = mItBegin.mpEnd - 1;
+					detail::allocator_construct(mAllocator, mItBegin.mpCurrent, eastl::move(valueSaved));
+			#if EASTL_EXCEPTIONS_ENABLED
+				}
+				catch(...)
+				{
+					++mItBegin; // The exception could only occur in the new operation above, after we have incremented mItBegin. So we need to undo it.
+					DoFreeSubarray(mItBegin.mpCurrentArrayPtr[-1]);
+					throw;
+				}
+			#endif
+		}
+
+		return *mItBegin; // Same as return front();
+	}
+
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	template<class... Args>
+	typename deque<T, Allocator, kDequeSubarraySize>::reference deque<T, Allocator, kDequeSubarraySize>::emplace_back(Args&&... args)
+	{
+		if ((mItEnd.mpCurrent + 1) != mItEnd.mpEnd)                                       // If we have room in the last subarray... we hope that usually this 'new' pathway gets executed, as it is slightly faster.
+		{
+			reference back = *mItEnd.mpCurrent;
+			detail::allocator_construct(mAllocator, mItEnd.mpCurrent++, eastl::forward<Args>(args)...);
+			return back;
+		}
+		else
+		{
+			// To consider: Detect if value isn't coming from within this container and handle that efficiently.
+			value_type  valueSaved(eastl::forward<Args>(args)...);                          // We need to make a temporary, because args may be a value_type that comes from within our container and the operations below may change the container. But we can use move instead of copy.
+			if(((mItEnd.mpCurrentArrayPtr - mpPtrArray) + 1) >= (difference_type)mnPtrArraySize) // If there are no more pointers after the current (last) one.
+				DoReallocPtrArray(1, kSideBack);
+
+			mItEnd.mpCurrentArrayPtr[1] = DoAllocateSubarray();
+
+			#if EASTL_EXCEPTIONS_ENABLED
+				try
+				{
+			#endif
+					detail::allocator_construct(mAllocator, mItEnd.mpCurrent, eastl::move(valueSaved));
+					mItEnd.SetSubarray(mItEnd.mpCurrentArrayPtr + 1);
+					mItEnd.mpCurrent = mItEnd.mpBegin;
+			#if EASTL_EXCEPTIONS_ENABLED
+				}
+				catch(...)
+				{
+					// No need to execute '--mItEnd', as the exception could only occur in the new operation above before we set mItEnd.
+					DoFreeSubarray(mItEnd.mpCurrentArrayPtr[1]);
+					throw;
+				}
 			#endif
 
-			if(i < (difference_type)(size() / 2)) // Should we insert at the front or at the back? We divide the range in half.
-			{
-				emplace_front(*mItBegin); // This operation potentially invalidates all existing iterators and so we need to assign them anew relative to mItBegin below.
-
-				itPosition = mItBegin + i;
-
-				const iterator newPosition  (itPosition, typename iterator::Increment());
-					  iterator oldBegin     (mItBegin,   typename iterator::Increment());
-				const iterator oldBeginPlus1(oldBegin,   typename iterator::Increment());
-
-				oldBegin.copy(oldBeginPlus1, newPosition, eastl::has_trivial_relocate<value_type>());
-			}
-			else
-			{
-				emplace_back(*iterator(mItEnd, typename iterator::Decrement()));
-
-				itPosition = mItBegin + i;
-
-					  iterator oldBack      (mItEnd,  typename iterator::Decrement());
-				const iterator oldBackMinus1(oldBack, typename iterator::Decrement());
-
-				oldBack.copy_backward(itPosition, oldBackMinus1, eastl::has_trivial_relocate<value_type>());
-			}
-
-			*itPosition = eastl::move(valueSaved);
-
-			return itPosition;
+			return *iterator(mItEnd, typename iterator::Decrement()); // Same as return back();
 		}
-
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		void deque<T, Allocator, kDequeSubarraySize>::emplace_front(const value_type& value)
-		{
-			if(mItBegin.mpCurrent != mItBegin.mpBegin)                  // If we have room in the first subarray...
-				::new((void*)--mItBegin.mpCurrent) value_type(value);   // We hope that usually this 'new' pathway gets executed, as it is slightly faster.
-			else                                                        // Note that in this 'else' case we create a temporary, which is less desirable.
-			{
-				// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-				value_type valueSaved(value);                           // We need to make a temporary, because value may come from within our container and the operations below may change the container.
-
-				if(mItBegin.mpCurrentArrayPtr == mpPtrArray)            // If there are no more pointers in front of the current (first) one...
-					DoReallocPtrArray(1, kSideFront);
-
-				mItBegin.mpCurrentArrayPtr[-1] = DoAllocateSubarray();
-
-				#if EASTL_EXCEPTIONS_ENABLED
-					try
-					{
-				#endif
-						mItBegin.SetSubarray(mItBegin.mpCurrentArrayPtr - 1);
-						mItBegin.mpCurrent = mItBegin.mpEnd - 1;
-						::new((void*)mItBegin.mpCurrent) value_type(eastl::move(valueSaved));  // We can move valueSaved into position.
-				#if EASTL_EXCEPTIONS_ENABLED
-					}
-					catch(...)
-					{
-						++mItBegin; // The exception could only occur in the new operation above, after we have incremented mItBegin. So we need to undo it.
-						DoFreeSubarray(mItBegin.mpCurrentArrayPtr[-1]);
-						throw;
-					}
-				#endif
-			}
-		}
-
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		void deque<T, Allocator, kDequeSubarraySize>::emplace_back(const value_type& value)
-		{
-			if((mItEnd.mpCurrent + 1) != mItEnd.mpEnd)              // If we have room in the last subarray...
-				::new((void*)mItEnd.mpCurrent++) value_type(value);
-			else
-			{
-				// To consider: Detect if value isn't coming from within this container and handle that efficiently.
-				value_type valueSaved(value);   // We need to make a temporary, because value may come from within our container and the operations below may change the container.
-
-				if(((mItEnd.mpCurrentArrayPtr - mpPtrArray) + 1) >= (difference_type)mnPtrArraySize) // If there are no more pointers after the current (last) one.
-					DoReallocPtrArray(1, kSideBack);
-
-				mItEnd.mpCurrentArrayPtr[1] = DoAllocateSubarray();
-
-				#if EASTL_EXCEPTIONS_ENABLED
-					try
-					{
-				#endif
-						::new((void*)mItEnd.mpCurrent) value_type(eastl::move(valueSaved)); // We can move valueSaved into position.
-						mItEnd.SetSubarray(mItEnd.mpCurrentArrayPtr + 1);
-						mItEnd.mpCurrent = mItEnd.mpBegin;
-				#if EASTL_EXCEPTIONS_ENABLED
-					}
-					catch(...)
-					{
-						// No need to execute '--mItEnd', as the exception could only occur in the new operation above before we set mItEnd.
-						DoFreeSubarray(mItEnd.mpCurrentArrayPtr[1]);
-						throw;
-					}
-				#endif
-			}
-		}
-	#endif
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -2204,28 +1924,28 @@ namespace eastl
 	}
 
 
-	#if EASTL_MOVE_SEMANTICS_ENABLED
-		template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-		typename deque<T, Allocator, kDequeSubarraySize>::iterator
-		deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, value_type&& value)
-		{
-			return emplace(position, eastl::move(value));
-		}
-	#endif
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, value_type&& value)
+	{
+		return emplace(position, eastl::move(value));
+	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-	void deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, size_type n, const value_type& value)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, size_type n, const value_type& value)
 	{
-		DoInsertValues(position, n, value);
+		return DoInsertValues(position, n, value);
 	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename InputIterator>
-	void deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, InputIterator first, InputIterator last)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::insert(const_iterator position, InputIterator first, InputIterator last)
 	{
-		DoInsert(position, first, last, is_integral<InputIterator>()); // The C++ standard requires this sort of behaviour, as InputIterator might actually be Integer and 'first' is really 'count' and 'last' is really 'value'.
+		return DoInsert(position, first, last, is_integral<InputIterator>()); // The C++ standard requires this sort of behaviour, as InputIterator might actually be Integer and 'first' is really 'count' and 'last' is really 'value'.
 	}
 
 
@@ -2246,6 +1966,9 @@ namespace eastl
 		#if EASTL_ASSERT_ENABLED
 			if(EASTL_UNLIKELY(!(validate_iterator(position) & isf_valid)))
 				EASTL_FAIL_MSG("deque::erase -- invalid iterator");
+
+			if(EASTL_UNLIKELY(position == end()))
+				EASTL_FAIL_MSG("deque::erase -- end() iterator is an invalid iterator for erase");
 		#endif
 
 		iterator itPosition(position, typename iterator::FromConst());
@@ -2254,12 +1977,12 @@ namespace eastl
 
 		if(i < (difference_type)(size() / 2)) // Should we move the front entries forward or the back entries backward? We divide the range in half.
 		{
-			itNext.copy_backward(mItBegin, itPosition, eastl::has_trivial_relocate<value_type>());
+			itNext.move_backward(mItBegin, itPosition, eastl::is_trivially_copyable<value_type>());
 			pop_front();
 		}
 		else
 		{
-			itPosition.copy(itNext, mItEnd, eastl::has_trivial_relocate<value_type>());
+			itPosition.move(itNext, mItEnd, eastl::is_trivially_copyable<value_type>());
 			pop_back();
 		}
 
@@ -2291,7 +2014,7 @@ namespace eastl
 				const iterator itNewBegin(mItBegin + n);
 				value_type** const pPtrArrayBegin = mItBegin.mpCurrentArrayPtr;
 
-				itLast.copy_backward(mItBegin, itFirst, eastl::has_trivial_relocate<value_type>());
+				itLast.move_backward(mItBegin, itFirst, eastl::is_trivially_copyable<value_type>());
 
 				for(; mItBegin != itNewBegin; ++mItBegin) // Question: If value_type is a POD type, will the compiler generate this loop at all?
 					mItBegin.mpCurrent->~value_type();    //           If so, then we need to make a specialization for destructing PODs.
@@ -2305,7 +2028,7 @@ namespace eastl
 				iterator itNewEnd(mItEnd - n);
 				value_type** const pPtrArrayEnd = itNewEnd.mpCurrentArrayPtr + 1;
 
-				itFirst.copy(itLast, mItEnd, eastl::has_trivial_relocate<value_type>());
+				itFirst.move(itLast, mItEnd, eastl::is_trivially_copyable<value_type>());
 
 				for(iterator itTemp(itNewEnd); itTemp != mItEnd; ++itTemp)
 					itTemp.mpCurrent->~value_type();
@@ -2392,15 +2115,13 @@ namespace eastl
 	//    // our definition of how reset_lose_memory works.
 	//    base_type::DoInit(0);
 	//
-	//    #if EASTL_RESET_ENABLED
-	//    #else
-	//    #endif
 	//}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	void deque<T, Allocator, kDequeSubarraySize>::swap(deque& x)
 	{
+	#if defined(EASTL_DEQUE_LEGACY_SWAP_BEHAVIOUR_REQUIRES_COPY_CTOR) && EASTL_DEQUE_LEGACY_SWAP_BEHAVIOUR_REQUIRES_COPY_CTOR
 		if(mAllocator == x.mAllocator) // If allocators are equivalent...
 			DoSwap(x);
 		else // else swap the contents.
@@ -2409,6 +2130,19 @@ namespace eastl
 			*this = x;                   // itself call this member swap function.
 			x     = temp;
 		}
+	#else
+		// NOTE(rparolin): The previous implementation required T to be copy-constructible in the fall-back case where
+		// allocators with unique instances copied elements.  This was an unnecessary restriction and prevented the common
+		// usage of deque with non-copyable types (eg. eastl::deque<non_copyable> or eastl::deque<unique_ptr>). 
+		// 
+		// The previous implementation violated the following requirements of deque::swap so the fall-back code has
+		// been removed.  EASTL implicitly defines 'propagate_on_container_swap = true' therefore the fall-back case is
+		// not required.  We simply swap the contents and the allocator as that is the common expectation of
+		// users and does not put the container into an invalid state since it can not free its memory via its current
+		// allocator instance.
+		//
+		DoSwap(x);
+	#endif
 	}
 
 
@@ -2432,7 +2166,7 @@ namespace eastl
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename InputIterator>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInitFromIterator(InputIterator first, InputIterator last, EASTL_ITC_NS::input_iterator_tag)
+	void deque<T, Allocator, kDequeSubarraySize>::DoInitFromIterator(InputIterator first, InputIterator last, eastl::input_iterator_tag)
 	{
 		base_type::DoInit(0); // Call the base uninitialized init function, but don't actually allocate any values.
 
@@ -2440,9 +2174,9 @@ namespace eastl
 			try
 			{
 		#endif
-				// We have little choice but to turn through the source iterator and call 
+				// We have little choice but to iterate through the source iterator and call 
 				// push_back for each item. It can be slow because it will keep reallocating the 
-				// container memory as we go. We are not allowed to use distance() on an InputIterator.
+				// container memory as we go (every kDequeSubarraySize elements). We are not allowed to use distance() on an InputIterator.
 				for(; first != last; ++first)   // InputIterators by definition actually only allow you to iterate through them once.
 				{                               // Thus the standard *requires* that we do this (inefficient) implementation.  
 					push_back(*first);          // Luckily, InputIterators are in practice almost never used, so this code will likely never get executed.
@@ -2460,7 +2194,7 @@ namespace eastl
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename ForwardIterator>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInitFromIterator(ForwardIterator first, ForwardIterator last, EASTL_ITC_NS::forward_iterator_tag)
+	void deque<T, Allocator, kDequeSubarraySize>::DoInitFromIterator(ForwardIterator first, ForwardIterator last, eastl::forward_iterator_tag)
 	{
 		typedef typename eastl::remove_const<ForwardIterator>::type non_const_iterator_type; // If T is a const type (e.g. const int) then we need to initialize it as if it were non-const.
 		typedef typename eastl::remove_const<value_type>::type      non_const_value_type;
@@ -2476,8 +2210,9 @@ namespace eastl
 		#endif
 				for(pPtrArrayCurrent = mItBegin.mpCurrentArrayPtr; pPtrArrayCurrent < mItEnd.mpCurrentArrayPtr; ++pPtrArrayCurrent) // Copy to the known-to-be-completely-used subarrays.
 				{
-					// We implment an algorithm here whereby we use uninitialized_copy() and advance() instead of just iterating from first to last and constructing as we go. The reason for this is that we can take advantage of POD data types and implement construction as memcpy operations.
-					ForwardIterator current(first); // To do: Implement a specialization of this algorithm for non-PODs which eliminates the need for 'current'.
+					// We implment an algorithm here whereby we use uninitialized_copy() and advance() instead of just iterating from first to last and constructing as we go.
+					// The reason for this is that we can take advantage of trivially copyable data types and implement construction as memcpy operations.
+					ForwardIterator current(first); // To do: Implement a specialization of this algorithm for non-trivially copyable types which eliminates the need for 'current'.
 
 					eastl::advance(current, kDequeSubarraySize);
 					eastl::uninitialized_copy((non_const_iterator_type)first, (non_const_iterator_type)current, (non_const_value_type*)*pPtrArrayCurrent);
@@ -2579,24 +2314,60 @@ namespace eastl
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename Integer>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInsert(const const_iterator& position, Integer n, Integer value, true_type)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::DoInsert(const const_iterator& position, Integer n, Integer value, true_type)
 	{
-		DoInsertValues(position, (size_type)n, (value_type)value);
+		return DoInsertValues(position, (size_type)n, (value_type)value);
 	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename InputIterator>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInsert(const const_iterator& position, const InputIterator& first, const InputIterator& last, false_type)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::DoInsert(const const_iterator& position, const InputIterator& first, const InputIterator& last, false_type)
 	{
 		typedef typename eastl::iterator_traits<InputIterator>::iterator_category IC;
-		DoInsertFromIterator(position, first, last, IC());
+		return DoInsertFromIterator(position, first, last, IC());
 	}
-
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	template <typename InputIterator>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInsertFromIterator(const_iterator position, const InputIterator& first, const InputIterator& last, EASTL_ITC_NS::forward_iterator_tag)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::DoInsertFromIterator(const_iterator position, const InputIterator& first, const InputIterator& last, eastl::input_iterator_tag)
+	{
+		const difference_type index = eastl::distance(cbegin(), position);
+#if EASTL_EXCEPTIONS_ENABLED
+		try
+		{
+#endif
+			// We have little choice but to iterate through the source iterator and call
+			// insert for each item. It can be slow because it will keep reallocating the
+			// container memory as we go (every kDequeSubarraySize elements). We are not
+			// allowed to use distance() on an InputIterator. InputIterators by definition
+			// actually only allow you to iterate through them once. Thus the standard
+			// *requires* that we do this (inefficient) implementation. Luckily,
+			// InputIterators are in practice almost never used, so this code will likely
+			// never get executed.
+			for (InputIterator iter = first; iter != last; ++iter)
+			{
+				position = insert(position, *iter) + 1;
+			}
+#if EASTL_EXCEPTIONS_ENABLED
+		}
+		catch (...)
+		{
+			erase(cbegin() + index, position);
+			throw;
+		}
+#endif
+
+		return begin() + index;
+	}
+
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	template <typename ForwardIterator>
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::DoInsertFromIterator(const_iterator position, const ForwardIterator& first, const ForwardIterator& last, eastl::forward_iterator_tag)
 	{
 		const size_type n = (size_type)eastl::distance(first, last);
 
@@ -2623,10 +2394,13 @@ namespace eastl
 					throw;
 				}
 			#endif
+
+			return mItBegin;
 		}
 		else if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If inserting at the end (i.e. appending)...
 		{
 			const iterator itNewEnd(DoReallocSubarray(n, kSideBack)); // mItEnd to itNewEnd refers to memory that isn't initialized yet; so it's not truly a valid iterator. Or at least not a dereferencable one.
+			const iterator itFirstInserted(mItEnd);
 
 			#if EASTL_EXCEPTIONS_ENABLED
 				try
@@ -2645,6 +2419,8 @@ namespace eastl
 					throw;
 				}
 			#endif
+
+			return itFirstInserted;
 		}
 		else
 		{
@@ -2674,7 +2450,7 @@ namespace eastl
 						}
 						else // Else the newly inserted items are going within the newly allocated area at the front.
 						{
-							InputIterator mid(first);
+							ForwardIterator mid(first);
 
 							eastl::advance(mid, (difference_type)n - nInsertionIndex);
 							eastl::uninitialized_copy_copy(mItBegin, itPosition, first, mid, itNewBegin); // This can throw.
@@ -2714,7 +2490,7 @@ namespace eastl
 						}
 						else
 						{
-							InputIterator mid(first);
+							ForwardIterator mid(first);
 
 							eastl::advance(mid, nPushedCount);
 							eastl::uninitialized_copy_copy(mid, last, itPosition, mItEnd, mItEnd);
@@ -2730,12 +2506,15 @@ namespace eastl
 					}
 				#endif
 			}
+
+			return iterator(mItBegin + nInsertionIndex);
 		}
 	}
 
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
-	void deque<T, Allocator, kDequeSubarraySize>::DoInsertValues(const_iterator position, size_type n, const value_type& value)
+	typename deque<T, Allocator, kDequeSubarraySize>::iterator
+	deque<T, Allocator, kDequeSubarraySize>::DoInsertValues(const_iterator position, size_type n, const value_type& value)
 	{
 		#if EASTL_ASSERT_ENABLED
 			if(EASTL_UNLIKELY(!(validate_iterator(position) & isf_valid)))
@@ -2765,10 +2544,13 @@ namespace eastl
 					throw;
 				}
 			#endif
+
+			return mItBegin;
 		}
 		else if(EASTL_UNLIKELY(position.mpCurrent == mItEnd.mpCurrent)) // If inserting at the end (i.e. appending)...
 		{
 			const iterator itNewEnd(DoReallocSubarray(n, kSideBack));
+			const iterator itFirstInserted(mItEnd);
 
 			#if EASTL_EXCEPTIONS_ENABLED
 				try
@@ -2787,6 +2569,8 @@ namespace eastl
 					throw;
 				}
 			#endif
+
+			return itFirstInserted;
 		}
 		else
 		{
@@ -2832,6 +2616,8 @@ namespace eastl
 						throw;
 					}
 				#endif
+
+				return iterator(mItBegin + nInsertionIndex);
 			}
 			else // Else the insertion index is in the back half of the deque, so grow the deque at the back.
 			{
@@ -2866,6 +2652,8 @@ namespace eastl
 						throw;
 					}
 				#endif
+
+				return iterator(mItBegin + nInsertionIndex);
 			}
 		}
 	}
@@ -2920,19 +2708,27 @@ namespace eastl
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	inline bool operator==(const deque<T, Allocator, kDequeSubarraySize>& a, const deque<T, Allocator, kDequeSubarraySize>& b)
 	{
-		return ((a.size() == b.size()) && equal(a.begin(), a.end(), b.begin()));
+		return ((a.size() == b.size()) && eastl::equal(a.begin(), a.end(), b.begin()));
 	}
 
+#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
+	inline synth_three_way_result<T> operator<=>(const deque<T, Allocator, kDequeSubarraySize>& a, const deque<T, Allocator, kDequeSubarraySize>& b)
+	{
+	    return eastl::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end(), synth_three_way{});
+	}
+
+#else
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	inline bool operator!=(const deque<T, Allocator, kDequeSubarraySize>& a, const deque<T, Allocator, kDequeSubarraySize>& b)
 	{
-		return ((a.size() != b.size()) || !equal(a.begin(), a.end(), b.begin()));
+		return ((a.size() != b.size()) || !eastl::equal(a.begin(), a.end(), b.begin()));
 	}
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	inline bool operator<(const deque<T, Allocator, kDequeSubarraySize>& a, const deque<T, Allocator, kDequeSubarraySize>& b)
 	{
-		return lexicographical_compare(a.begin(), a.end(), b.begin(), b.end());
+		return eastl::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end());
 	}
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
@@ -2952,6 +2748,7 @@ namespace eastl
 	{
 		return !(a < b);
 	}
+#endif
 
 	template <typename T, typename Allocator, unsigned kDequeSubarraySize>
 	inline void swap(deque<T, Allocator, kDequeSubarraySize>& a, deque<T, Allocator, kDequeSubarraySize>& b)
@@ -2959,20 +2756,156 @@ namespace eastl
 		a.swap(b);
 	}
 
+	///////////////////////////////////////////////////////////////////////
+	// erase / erase_if
+	//
+	// https://en.cppreference.com/w/cpp/container/deque/erase2
+	///////////////////////////////////////////////////////////////////////
+	template <class T, class Allocator, class U>
+	typename deque<T, Allocator>::size_type erase(deque<T, Allocator>& c, const U& value)
+	{
+		// Erases all elements that compare equal to value from the container. 
+		auto origEnd = c.end();
+		auto newEnd = eastl::remove(c.begin(), origEnd, value);
+		auto numRemoved = eastl::distance(newEnd, origEnd);
+		c.erase(newEnd, origEnd);
+
+		// Note: This is technically a lossy conversion when size_type
+		// is 32bits and ptrdiff_t is 64bits (could happen on 64bit
+		// systems when EASTL_SIZE_T_32BIT is set). In practice this
+		// is fine because if EASTL_SIZE_T_32BIT is set then the deque
+		// should not have more elements than fit in a uint32_t and so
+		// the distance here should fit in a size_type.
+		return static_cast<typename deque<T, Allocator>::size_type>(numRemoved);
+	}
+
+	template <class T, class Allocator, class Predicate>
+	typename deque<T, Allocator>::size_type erase_if(deque<T, Allocator>& c, Predicate predicate)
+	{
+		// Erases all elements that satisfy the predicate pred from the container. 
+		auto origEnd = c.end();
+		auto newEnd = eastl::remove_if(c.begin(), origEnd, predicate);
+		auto numRemoved = eastl::distance(newEnd, origEnd);
+		c.erase(newEnd, origEnd);
+
+		// Note: This is technically a lossy conversion when size_type
+		// is 32bits and ptrdiff_t is 64bits (could happen on 64bit
+		// systems when EASTL_SIZE_T_32BIT is set). In practice this
+		// is fine because if EASTL_SIZE_T_32BIT is set then the deque
+		// should not have more elements than fit in a uint32_t and so
+		// the distance here should fit in a size_type.
+		return static_cast<typename deque<T, Allocator>::size_type>(numRemoved);
+	}
+
+
+	///////////////////////////////////////////////////////////////////////
+	// erase_unsorted
+	//
+	// This serves a similar purpose as erase above but with the difference
+	// that it doesn't preserve the relative order of what is left in the
+	// deque.
+	//
+	// Effects: Removes all elements equal to value from the deque while
+	// optimizing for speed with the potential reordering of elements as a
+	// side effect.
+	//
+	// Complexity: Linear
+	//
+	///////////////////////////////////////////////////////////////////////
+	template <class T, class Allocator, unsigned SubArraySize, class U>
+	typename deque<T, Allocator, SubArraySize>::size_type erase_unsorted(deque<T, Allocator, SubArraySize>& c, const U& value)
+	{
+		auto itRemove = c.begin();
+		auto ritMove = c.rbegin();
+
+		while(true)
+		{
+			itRemove = eastl::find(itRemove, ritMove.base(), value);
+			if (itRemove == ritMove.base()) // any elements to remove?
+				break;
+
+			ritMove = eastl::find_if(ritMove, eastl::make_reverse_iterator(itRemove), [&value](const T& elem) { return elem != value; });
+			if (itRemove == ritMove.base()) // any elements that can be moved into place?
+				break;
+
+			*itRemove = eastl::move(*ritMove);
+			++itRemove;
+			++ritMove;
+		}
+
+		// now all elements in the range [itRemove, c.end()) are either to be removed or have already been moved from.
+
+		auto origEnd = end(c);
+		auto numRemoved = distance(itRemove, origEnd);
+		c.erase(itRemove, origEnd);
+
+		// Note: This is technically a lossy conversion when size_type
+		// is 32bits and ptrdiff_t is 64bits (could happen on 64bit
+		// systems when EASTL_SIZE_T_32BIT is set). In practice this
+		// is fine because if EASTL_SIZE_T_32BIT is set then the deque
+		// should not have more elements than fit in a uint32_t and so
+		// the distance here should fit in a size_type.
+		return static_cast<typename deque<T, Allocator>::size_type>(numRemoved);
+	}
+
+	///////////////////////////////////////////////////////////////////////
+	// erase_unsorted_if
+	//
+	// This serves a similar purpose as erase_if above but with the
+	// difference that it doesn't preserve the relative order of what is
+	// left in the deque.
+	//
+	// Effects: Removes all elements that return true for the predicate
+	// while optimizing for speed with the potential reordering of elements
+	// as a side effect.
+	//
+	// Complexity: Linear
+	//
+	///////////////////////////////////////////////////////////////////////
+	template <class T, class Allocator, class Predicate, unsigned SubArraySize>
+	typename deque<T, Allocator, SubArraySize>::size_type erase_unsorted_if(deque<T, Allocator, SubArraySize>& c, Predicate predicate)
+	{
+		// Erases all elements that satisfy predicate from the container. 
+		auto itRemove = c.begin();
+		auto ritMove = c.rbegin();
+
+		while(true)
+		{
+			itRemove = eastl::find_if(itRemove, ritMove.base(), predicate);
+			if (itRemove == ritMove.base()) // any elements to remove?
+				break;
+
+			ritMove = eastl::find_if(ritMove, eastl::make_reverse_iterator(itRemove), not_fn(predicate));
+			if (itRemove == ritMove.base()) // any elements that can be moved into place?
+				break;
+
+			*itRemove = eastl::move(*ritMove);
+			++itRemove;
+			++ritMove;
+		}
+
+		// now all elements in the range [itRemove, c.end()) are either to be removed or have already been moved from.
+
+		auto origEnd = end(c);
+		auto numRemoved = distance(itRemove, origEnd);
+		c.erase(itRemove, origEnd);
+
+		// Note: This is technically a lossy conversion when size_type
+		// is 32bits and ptrdiff_t is 64bits (could happen on 64bit
+		// systems when EASTL_SIZE_T_32BIT is set). In practice this
+		// is fine because if EASTL_SIZE_T_32BIT is set then the deque
+		// should not have more elements than fit in a uint32_t and so
+		// the distance here should fit in a size_type.
+		return static_cast<typename deque<T, Allocator>::size_type>(numRemoved);
+	}
 
 } // namespace eastl
 
 
-#ifdef _MSC_VER
-	#pragma warning(pop)
+EA_RESTORE_VC_WARNING();
+#if EASTL_EXCEPTIONS_ENABLED
+	EA_RESTORE_VC_WARNING();
 #endif
 
 
 #endif // Header include guard
-
-
-
-
-
-
-

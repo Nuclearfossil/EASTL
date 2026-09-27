@@ -7,6 +7,7 @@
 #define EASTLTEST_ALLOCATOR_H
 
 #include <EABase/eabase.h>
+#include <EASTL/atomic.h>
 #include <EASTL/internal/config.h>
 #include <new>
 #include <stdio.h>
@@ -15,7 +16,9 @@
 
 	#include <PPMalloc/EAGeneralAllocator.h>
 	#include <PPMalloc/EAGeneralAllocatorDebug.h>
-	
+
+	#include <coreallocator/icoreallocator_interface.h>
+
 	#if defined(EA_COMPILER_MSVC)
 		#include <math.h>       // VS2008 has an acknowledged bug that requires math.h (and possibly also string.h) to be #included before intrin.h.
 		#include <intrin.h>
@@ -23,27 +26,38 @@
 	#endif
 
 	///////////////////////////////////////////////////////////////////////////////
-	// gGeneralAllocator
+	// EASTLTest_GetGeneralAllocator()
 	//
 	namespace EA
 	{
 		namespace Allocator
 		{
 			#ifdef EA_DEBUG
-							   GeneralAllocatorDebug  gGeneralAllocator EA_INIT_PRIORITY(1000);
 				extern PPM_API GeneralAllocatorDebug* gpEAGeneralAllocatorDebug;
 			#else
-							   GeneralAllocator       gGeneralAllocator EA_INIT_PRIORITY(1000);
 				extern PPM_API GeneralAllocator*      gpEAGeneralAllocator;
 			#endif
+
+			static inline auto& EASTLTest_GetGeneralAllocator()
+			{
+			#ifdef EA_DEBUG
+				using GeneralAllocatorType = GeneralAllocatorDebug;
+			#else
+				using GeneralAllocatorType = GeneralAllocator;
+			#endif
+
+				static GeneralAllocatorType sGeneralAllocator;
+				return sGeneralAllocator;
+			}
 		}
 	}
 
 
 	///////////////////////////////////////////////////////////////////////////////
-	// gEASTLTest_AllocationCount
+	// allocator counts for debugging purposes
 	//
-	int gEASTLTest_AllocationCount = 0;
+	eastl::atomic<int> gEASTLTest_AllocationCount = 0;
+	eastl::atomic<int> gEASTLTest_TotalAllocationCount = 0;
 
 
 	///////////////////////////////////////////////////////////////////////////////
@@ -52,7 +66,7 @@
 	bool EASTLTest_ValidateHeap()
 	{
 	#ifdef EA_DEBUG
-		return EA::Allocator::gpEAGeneralAllocatorDebug->ValidateHeap(EA::Allocator::GeneralAllocator::kHeapValidationLevelBasic);
+		return EA::Allocator::EASTLTest_GetGeneralAllocator().ValidateHeap(EA::Allocator::GeneralAllocator::kHeapValidationLevelBasic);
 	#else
 		return true;
 	#endif
@@ -94,15 +108,164 @@
 		#endif
 	}
 
+	///////////////////////////////////////////////////////////////////////////////
+	// system memory allocation helpers
+	//
+	namespace
+	{
+		void* PlatformMalloc(size_t size, size_t alignment = 16)
+		{
+		#ifdef EA_PLATFORM_MICROSOFT
+			return _aligned_malloc(size, alignment);
+		#else
+			void *p = nullptr;
+			alignment = alignment < sizeof( void *) ? sizeof( void *) : alignment;
+			posix_memalign(&p, alignment, size);
+			return p;
+		#endif
+		}
 
+		void PlatformFree(void* p)
+		{
+		#ifdef EA_PLATFORM_MICROSOFT
+			_aligned_free(p);
+		#else
+			free(p);
+		#endif
+		}
+
+		void* InternalMalloc(size_t size)
+		{
+			auto& allocator = EA::Allocator::EASTLTest_GetGeneralAllocator();
+
+		#ifdef EA_DEBUG
+			void* mem = allocator.MallocAlignedDebug(size, alignof(std::max_align_t), 0, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
+		#else
+			void* mem = allocator.MallocAligned(size, alignof(std::max_align_t));;
+		#endif
+
+			if(mem == nullptr)
+				mem = PlatformMalloc(size);
+
+			return mem;
+		}
+
+		void* InternalMalloc(size_t size, const char* name, int flags, unsigned debugFlags, const char* file, int line)
+		{
+			auto& allocator = EA::Allocator::EASTLTest_GetGeneralAllocator();
+
+		#ifdef EA_DEBUG
+			void* mem = allocator.MallocAlignedDebug(size, alignof(std::max_align_t), 0, flags, debugFlags, name, file, line);
+		#else
+			void* mem = allocator.MallocAligned(size, alignof(std::max_align_t), 0, flags);;
+			EA_UNUSED(debugFlags);
+			EA_UNUSED(file);
+			EA_UNUSED(line);
+			EA_UNUSED(name);
+		#endif
+
+			if(mem == nullptr)
+				mem = PlatformMalloc(size);
+
+			return mem;
+		}
+
+		void* InternalMalloc(size_t size, size_t alignment, const char* name, int flags, unsigned debugFlags, const char* file, int line)
+		{
+		    void* mem = nullptr;
+
+			auto& allocator = EA::Allocator::EASTLTest_GetGeneralAllocator();
+
+		#ifdef EA_DEBUG
+			mem = allocator.MallocAlignedDebug(size, alignment, 0, flags, debugFlags, name, file, line);
+		#else
+			mem = allocator.MallocAligned(size, alignment, flags);
+			EA_UNUSED(debugFlags);
+			EA_UNUSED(file);
+			EA_UNUSED(line);
+			EA_UNUSED(name);
+		#endif
+
+			if(mem == nullptr)
+				mem = PlatformMalloc(size, alignment);
+
+			return mem;
+		}
+
+		void* InternalMalloc(size_t size, size_t alignment)
+		{
+			void* mem = nullptr;
+
+			auto& allocator = EA::Allocator::EASTLTest_GetGeneralAllocator();
+
+		#ifdef EA_DEBUG
+			mem = allocator.MallocAlignedDebug(size, alignment, 0, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
+		#else
+			mem = allocator.MallocAligned(size, alignment);
+		#endif
+
+			if(mem == nullptr)
+				mem = PlatformMalloc(size, alignment);
+
+			return mem;
+		}
+
+		void InternalFree(void* p)
+		{
+			auto& allocator = EA::Allocator::EASTLTest_GetGeneralAllocator();
+
+			if(allocator.ValidateAddress(p, EA::Allocator::GeneralAllocator::kAddressTypeOwned) == p)
+			{
+				allocator.Free(p);
+			}
+			else
+			{
+				PlatformFree(p);
+			}
+		}
+	}
+
+	class EASTLTestICA : public EA::Allocator::ICoreAllocator
+	{
+	public:
+		EASTLTestICA()
+		{
+		}
+
+		virtual ~EASTLTestICA()
+		{
+		}
+
+		virtual void* Alloc(size_t size, const char* name, unsigned int flags)
+		{
+			return ::InternalMalloc(size, name, (int)flags, 0, NULL, 0);
+		}
+
+		virtual void* Alloc(size_t size, const char* name, unsigned int flags,
+							unsigned int align, unsigned int)
+		{
+			return ::InternalMalloc(size, (size_t)align, name, (int)flags, 0, NULL, 0);
+		}
+
+		virtual void Free(void* pData, size_t /*size*/)
+		{
+			return ::InternalFree(pData);
+		}
+	};
+
+	EA::Allocator::ICoreAllocator* EA::Allocator::ICoreAllocator::GetDefaultAllocator()
+	{
+		static EASTLTestICA sEASTLTestICA;
+
+		return &sEASTLTestICA;
+	}
+
+	///////////////////////////////////////////////////////////////////////////
+	// operator new/delete implementations
+	//
 	_Ret_maybenull_ _Post_writable_byte_size_(size) void* operator new(size_t size, const std::nothrow_t&) EA_THROW_SPEC_NEW_NONE()
 	{
-		#ifdef EA_DEBUG
-			void* const p = EA::Allocator::gGeneralAllocator.MallocDebug(size, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
-		#else
-			void* const p = EA::Allocator::gGeneralAllocator.Malloc(size);
-		#endif
-		return p;
+		return InternalMalloc(size);
 	}
 
 
@@ -110,21 +273,18 @@
 	{
 		if(p) // The standard specifies that 'delete NULL' is a valid operation.
 		{
-			gEASTLTest_AllocationCount--;
-			EA::Allocator::gGeneralAllocator.Free(p);
+			gEASTLTest_AllocationCount.fetch_add(-1, eastl::memory_order_relaxed);
+			InternalFree(p);
 		}
 	}
 
 
 	_Ret_maybenull_ _Post_writable_byte_size_(size) void* operator new[](size_t size, const std::nothrow_t&) EA_THROW_SPEC_NEW_NONE()
 	{
-		gEASTLTest_AllocationCount++;
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
 
-		#ifdef EA_DEBUG
-			void* const p = EA::Allocator::gGeneralAllocator.MallocDebug(size, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
-		#else
-			void* const p = EA::Allocator::gGeneralAllocator.Malloc(size);
-		#endif
+		void* p = InternalMalloc(size);
 		return p;
 	}
 
@@ -133,37 +293,18 @@
 	{
 		if(p)
 		{
-			gEASTLTest_AllocationCount--;
-			EA::Allocator::gGeneralAllocator.Free(p);
+			gEASTLTest_AllocationCount.fetch_add(-1, eastl::memory_order_relaxed);
+			InternalFree(p);
 		}
 	}
 
 
-	_Ret_notnull_ _Post_writable_byte_size_(size) void* operator new(size_t size) EA_THROW_SPEC_NEW(std::bad_alloc)
+	_Ret_notnull_ _Post_writable_byte_size_(size) void* operator new(size_t size) 
 	{
-		gEASTLTest_AllocationCount++;
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
 
-		// This IsConstructed functionality is needed by some mobile platforms due to some weaknesses in their application startup.
-		#if (PPMALLOC_VERSION_N >= 11602)
-			const bool bConstructed = EA::Allocator::gGeneralAllocator.IsConstructed();
-		#else
-			const bool bConstructed = (EA::Allocator::gGeneralAllocator.GetTraceFunction(NULL) != NULL);
-		#endif
-
-		void *mem;
-
-		if(bConstructed)
-		{
-			#ifdef EA_DEBUG
-				mem = EA::Allocator::gGeneralAllocator.MallocDebug(size, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
-			#else
-				mem = EA::Allocator::gGeneralAllocator.Malloc(size);
-			#endif
-		}
-		else
-		{
-			mem = malloc(size);
-		}
+		void* mem = InternalMalloc(size);
 
 	#if !defined(EA_COMPILER_NO_EXCEPTIONS)
 		if (mem == NULL)
@@ -176,31 +317,12 @@
 	}
 
 
-	_Ret_notnull_ _Post_writable_byte_size_(size) void* operator new[](size_t size) EA_THROW_SPEC_NEW(std::bad_alloc)
+	_Ret_notnull_ _Post_writable_byte_size_(size) void* operator new[](size_t size) 
 	{
-		gEASTLTest_AllocationCount++;
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
 
-		// This IsConstructed functionality is needed by some mobile platforms due to some weaknesses in their application startup.
-		#if (PPMALLOC_VERSION_N >= 11602)
-			const bool bConstructed = EA::Allocator::gGeneralAllocator.IsConstructed();
-		#else
-			const bool bConstructed = (EA::Allocator::gGeneralAllocator.GetTraceFunction(NULL) != NULL);
-		#endif
-
-		void *mem;
-
-		if(bConstructed)
-		{
-			#ifdef EA_DEBUG
-				mem = EA::Allocator::gGeneralAllocator.MallocDebug(size, 0, 0, gUnattributedNewTag, UNATTRIBUTED_NEW_FILE, UNATTRIBUTED_NEW_LINE);
-			#else
-				mem = EA::Allocator::gGeneralAllocator.Malloc(size);
-			#endif
-		}
-		else
-		{
-			mem = malloc(size);
-		}
+		void* mem = InternalMalloc(size);
 
 	#if !defined(EA_COMPILER_NO_EXCEPTIONS)
 		if (mem == NULL)
@@ -213,87 +335,65 @@
 	}
 
 
-	#ifdef EA_DEBUG
 	void* operator new[](size_t size, const char* name, int flags, unsigned debugFlags, const char* file, int line)
-	#else
-	void* operator new[](size_t size, const char* /*name*/, int flags, unsigned /*debugFlags*/, const char* /*file*/, int /*line*/)
-	#endif
 	{
-		gEASTLTest_AllocationCount++;
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
 
-		#ifdef EA_DEBUG
-			return EA::Allocator::gGeneralAllocator.MallocDebug(size, flags, debugFlags, name, file, line);
-		#else
-			return EA::Allocator::gGeneralAllocator.Malloc(size, flags);
-		#endif
+		return InternalMalloc(size, name, flags, debugFlags, file, line);
 	}
 
 
-	#ifdef EA_DEBUG
 	void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* name, int flags, unsigned debugFlags, const char* file, int line)
-	#else
-	void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* /*name*/, int flags, unsigned /*debugFlags*/, const char* /*file*/, int /*line*/)
-	#endif
 	{
-		gEASTLTest_AllocationCount++;
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
 
-		#ifdef EA_DEBUG
-			return EA::Allocator::gGeneralAllocator.MallocAlignedDebug(size, alignment, alignmentOffset, flags, debugFlags, name, file, line);
-		#else
-			return EA::Allocator::gGeneralAllocator.MallocAligned(size, alignment, alignmentOffset, flags);
-		#endif
+		return InternalMalloc(size, alignment, name, flags, debugFlags, file, line);
 	}
 
 	// Used by GCC when you make new objects of classes with >= N bit alignment (with N depending on the compiler).
 	void* operator new(size_t size, size_t alignment)
 	{
-		gEASTLTest_AllocationCount++;
-		return EA::Allocator::gGeneralAllocator.MallocAligned(size, alignment);
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+
+		return InternalMalloc(size, alignment);
 	}
 
 	// Used by GCC when you make new objects of classes with >= N bit alignment (with N depending on the compiler).
 	void* operator new(size_t size, size_t alignment, const std::nothrow_t&) EA_THROW_SPEC_NEW_NONE()
 	{
-		gEASTLTest_AllocationCount++;
-		return EA::Allocator::gGeneralAllocator.MallocAligned(size, alignment);
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+
+		return InternalMalloc(size, alignment);
 	}
 
 	// Used by GCC when you make new objects of classes with >= N bit alignment (with N depending on the compiler).
 	void* operator new[](size_t size, size_t alignment)
 	{
-		gEASTLTest_AllocationCount++;
-		return EA::Allocator::gGeneralAllocator.MallocAligned(size, alignment);
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+
+		return InternalMalloc(size, alignment);
 	}
 
 	// Used by GCC when you make new objects of classes with >= N bit alignment (with N depending on the compiler).
 	void* operator new[](size_t size, size_t alignment, const std::nothrow_t&) EA_THROW_SPEC_NEW_NONE()
 	{
-		gEASTLTest_AllocationCount++;
-		return EA::Allocator::gGeneralAllocator.MallocAligned(size, alignment);
+		gEASTLTest_AllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+		gEASTLTest_TotalAllocationCount.fetch_add(1, eastl::memory_order_relaxed);
+
+		return InternalMalloc(size, alignment);
 	}
 
 	void operator delete(void* p) EA_THROW_SPEC_DELETE_NONE()
 	{
 		if(p) // The standard specifies that 'delete NULL' is a valid operation.
 		{
-			gEASTLTest_AllocationCount--;
-
-			// This IsConstructed functionality is needed by some mobile platforms due to some weaknesses in their application startup.
-			#if (PPMALLOC_VERSION_N >= 11602)
-				const bool bConstructed = EA::Allocator::gGeneralAllocator.IsConstructed();
-			#else
-				const bool bConstructed = (EA::Allocator::gGeneralAllocator.GetTraceFunction(NULL) != NULL); // Old hacky way to test this.
-			#endif
-
-			if(bConstructed)
-			{
-				if(EA::Allocator::gGeneralAllocator.ValidateAddress(p, EA::Allocator::GeneralAllocatorDebug::kAddressTypeOwned))
-					EA::Allocator::gGeneralAllocator.Free(p);
-				else
-					free(p);
-			}
-			else
-				free(p);
+			gEASTLTest_AllocationCount.fetch_add(-1, eastl::memory_order_relaxed);
+			InternalFree(p);
 		}
 	}
 
@@ -302,30 +402,14 @@
 	{
 		if(p)
 		{
-			gEASTLTest_AllocationCount--;
-
-			// This IsConstructed functionality is needed by some mobile platforms due to some weaknesses in their application startup.
-			#if (PPMALLOC_VERSION_N >= 11602)
-				const bool bConstructed = EA::Allocator::gGeneralAllocator.IsConstructed();
-			#else
-				const bool bConstructed = (EA::Allocator::gGeneralAllocator.GetTraceFunction(NULL) != NULL); // Old hacky way to test this.
-			#endif
-
-			if(bConstructed)
-			{
-				if(EA::Allocator::gGeneralAllocator.ValidateAddress(p, EA::Allocator::GeneralAllocatorDebug::kAddressTypeOwned))
-					EA::Allocator::gGeneralAllocator.Free(p);
-				else
-					free(p);
-			}
-			else 
-			   free(p);
+			gEASTLTest_AllocationCount.fetch_add(-1, eastl::memory_order_relaxed);
+			InternalFree(p);
 		}
 	}
 
-	void EASTLTest_SetGeneralAllocator() 
+	void EASTLTest_SetGeneralAllocator()
 	{
-		EA::Allocator::SetGeneralAllocator(&EA::Allocator::gGeneralAllocator);
+		EA::Allocator::SetGeneralAllocator(&EA::Allocator::EASTLTest_GetGeneralAllocator());
 		#ifdef EA_DEBUG
 			EA::Allocator::gpEAGeneralAllocatorDebug->SetDefaultDebugDataFlag(EA::Allocator::GeneralAllocatorDebug::kDebugDataIdGuard);
 		#endif
@@ -372,13 +456,13 @@
 	void* operator new[](size_t size, size_t alignment, size_t /*alignmentOffset*/, const char* /*name*/, int /*flags*/, unsigned /*debugFlags*/, const char* /*file*/, int /*line*/)
 		{ return Internal::EASTLAlignedAlloc(size, alignment); }
 
-	void* operator new(size_t size, size_t alignment) 
+	void* operator new(size_t size, size_t alignment)
 		{ return Internal::EASTLAlignedAlloc(size, alignment); }
 
 	void* operator new(size_t size, size_t alignment, const std::nothrow_t&) EA_THROW_SPEC_NEW_NONE()
 		{ return Internal::EASTLAlignedAlloc(size, alignment); }
 
-	void* operator new[](size_t size, size_t alignment) 
+	void* operator new[](size_t size, size_t alignment)
 		{ return Internal::EASTLAlignedAlloc(size, alignment); }
 
 	void* operator new[](size_t size, size_t alignment, const std::nothrow_t&)EA_THROW_SPEC_NEW_NONE()
@@ -386,10 +470,10 @@
 
 	// C++14 deleter
 	void operator delete(void* p, std::size_t sz ) EA_THROW_SPEC_DELETE_NONE()
-	{ Internal::EASTLAlignedFree(p); EA_UNUSED(sz); }
+		{ Internal::EASTLAlignedFree(p); EA_UNUSED(sz); }
 
 	void operator delete[](void* p, std::size_t sz ) EA_THROW_SPEC_DELETE_NONE()
-	{ Internal::EASTLAlignedFree(p); EA_UNUSED(sz); }
+		{ Internal::EASTLAlignedFree(p); EA_UNUSED(sz); }
 
 	void operator delete(void* p) EA_THROW_SPEC_DELETE_NONE()
 		{ Internal::EASTLAlignedFree(p); }
@@ -400,13 +484,6 @@
 	void EASTLTest_SetGeneralAllocator() { /* intentionally blank */ }
 	bool EASTLTest_ValidateHeap() { return true; }
 
-#endif // ....
+#endif // !EASTL_OPENSOURCE
 
 #endif // Header include guard
-
-
-
-
-
-
-

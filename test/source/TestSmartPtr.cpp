@@ -8,6 +8,7 @@
 #include "GetTypeName.h"
 #include <EAStdC/EAString.h>
 #include <EAStdC/EAStopwatch.h>
+#include <EASTL/atomic.h>
 #include <EASTL/core_allocator_adapter.h>
 #include <EASTL/core_allocator.h>
 #include <EASTL/intrusive_ptr.h>
@@ -22,11 +23,7 @@
 #include <EASTL/weak_ptr.h>
 #include <eathread/eathread_thread.h>
 
-
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-#endif
-
+EA_DISABLE_ALL_VC_WARNINGS()
 #include <stdio.h>
 #include <string.h>
 #ifdef EA_PLATFORM_WINDOWS
@@ -37,12 +34,10 @@
 #elif defined(EA_PLATFORM_ANDROID)
 	#include <android/log.h>
 #endif
+EA_RESTORE_ALL_VC_WARNINGS()
 
-#if defined(_MSC_VER)
-	#pragma warning(disable: 4702)  // unreachable code
-#endif
-
-
+EA_DISABLE_VC_WARNING(4702 4800)  // 4702: unreachable code
+								  // 4800: forcing value to bool 'true' or 'false'
 
 
 
@@ -60,11 +55,9 @@ namespace SmartPtrTest
 
 		CustomDeleter() {}
 		CustomDeleter(const CustomDeleter&) {}
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			CustomDeleter(CustomDeleter&&) {}
-			CustomDeleter& operator=(const CustomDeleter&) { return *this; }
-			CustomDeleter& operator=(CustomDeleter&&) { return *this; }
-		#endif
+		CustomDeleter(CustomDeleter&&) {}
+		CustomDeleter& operator=(const CustomDeleter&) { return *this; }
+		CustomDeleter& operator=(CustomDeleter&&) { return *this; }
 	};
 
 
@@ -76,11 +69,9 @@ namespace SmartPtrTest
 
 		CustomArrayDeleter() {}
 		CustomArrayDeleter(const CustomArrayDeleter&) {}
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			CustomArrayDeleter(CustomArrayDeleter&&) {}
-			CustomArrayDeleter& operator=(const CustomArrayDeleter&) { return *this; }
-			CustomArrayDeleter& operator=(CustomArrayDeleter&&) { return *this; }
-		#endif
+		CustomArrayDeleter(CustomArrayDeleter&&) {}
+		CustomArrayDeleter& operator=(const CustomArrayDeleter&) { return *this; }
+		CustomArrayDeleter& operator=(CustomArrayDeleter&&) { return *this; }
 	};
 
 
@@ -402,6 +393,33 @@ namespace SmartPtrTest
 		int mX;
 	};
 
+	struct CheckUPtrEmptyInDestructor
+	{
+		~CheckUPtrEmptyInDestructor()
+		{
+			if(mpUPtr)
+				mCheckUPtrEmpty = (*mpUPtr == nullptr);
+		}
+
+		eastl::unique_ptr<CheckUPtrEmptyInDestructor>* mpUPtr{};
+		static bool mCheckUPtrEmpty;
+	};
+
+	bool CheckUPtrEmptyInDestructor::mCheckUPtrEmpty = false;
+
+	struct CheckUPtrArrayEmptyInDestructor
+	{
+		~CheckUPtrArrayEmptyInDestructor()
+		{
+			if(mpUPtr)
+				mCheckUPtrEmpty = (*mpUPtr == nullptr);
+		}
+
+		eastl::unique_ptr<CheckUPtrArrayEmptyInDestructor[]>* mpUPtr{};
+		static bool mCheckUPtrEmpty;
+	};
+
+	bool CheckUPtrArrayEmptyInDestructor::mCheckUPtrEmpty = false;
 } // namespace SmartPtrTest
 
 
@@ -506,28 +524,70 @@ static int Test_unique_ptr()
 		unique_ptr<A, CustomDeleter> pT6(new A(17), customADeleter);
 		EATEST_VERIFY(pT6->mc == 17);
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// unique_ptr(pointer pValue, typename eastl::remove_reference<Deleter>::type&& deleter) noexcept
-			unique_ptr<A, CustomDeleter> pT7(new A(18), CustomDeleter());
-			EATEST_VERIFY(pT7->mc == 18);
+		// unique_ptr(pointer pValue, typename eastl::remove_reference<Deleter>::type&& deleter) noexcept
+		unique_ptr<A, CustomDeleter> pT7(new A(18), CustomDeleter());
+		EATEST_VERIFY(pT7->mc == 18);
 
-			// unique_ptr(this_type&& x) noexcept
-			unique_ptr<A, CustomDeleter> pT8(eastl::move(pT7));
-			EATEST_VERIFY(pT8->mc == 18);
+		// unique_ptr(this_type&& x) noexcept
+		unique_ptr<A, CustomDeleter> pT8(eastl::move(pT7));
+		EATEST_VERIFY(pT8->mc == 18);
 
-			// unique_ptr(unique_ptr<U, E>&& u, ...)
-			unique_ptr<A, default_delete<A> > pT9(eastl::move(pT2));
+		// unique_ptr(unique_ptr<U, E>&& u, ...)
+		unique_ptr<A, default_delete<A> > pT9(eastl::move(pT2));
 
-			// this_type& operator=(this_type&& u) noexcept
-			// operator=(unique_ptr<U, E>&& u) noexcept
-			//unique_ptr<void, CustomDeleter> pTVoid;
-			//unique_ptr<int, CustomDeleter>  pTInt(new int(1));
-			//pTVoid.operator=<int, CustomDeleter>(eastl::move(pTInt));  // This doesn't work because CustomDeleter doesn't know how to delete void*. Need to rework this test.
+		// this_type& operator=(this_type&& u) noexcept
+		// operator=(unique_ptr<U, E>&& u) noexcept
+		//unique_ptr<void, CustomDeleter> pTVoid;
+		//unique_ptr<int, CustomDeleter>  pTInt(new int(1));
+		//pTVoid.operator=<int, CustomDeleter>(eastl::move(pTInt));  // This doesn't work because CustomDeleter doesn't know how to delete void*. Need to rework this test.
 
-			// this_type& operator=(nullptr_t) noexcept
-			pT6 = nullptr;
-			EATEST_VERIFY(pT6.get() == (A*)0);
-		#endif
+		// this_type& operator=(nullptr_t) noexcept
+		pT6 = nullptr;
+		EATEST_VERIFY(pT6.get() == (A*)0);
+
+		// user reported regression
+		// ensure a unique_ptr containing nullptr doesn't call the deleter when its destroyed.
+		{
+			static bool sLocalDeleterCalled;
+			sLocalDeleterCalled = false;
+
+			struct LocalDeleter
+			{
+				void operator()(int* p) const
+				{
+					sLocalDeleterCalled = true;
+					delete p;
+				}
+			};
+
+			using local_unique_ptr = eastl::unique_ptr<int, LocalDeleter>;
+
+			local_unique_ptr pEmpty{nullptr};
+
+			pEmpty = local_unique_ptr{new int(42), LocalDeleter()};
+
+			EATEST_VERIFY(sLocalDeleterCalled == false);
+		}
+	}
+
+	{
+		// Test that unique_ptr internal pointer is reset before calling the destructor
+		CheckUPtrEmptyInDestructor::mCheckUPtrEmpty = false;
+
+		unique_ptr<CheckUPtrEmptyInDestructor> uptr(new CheckUPtrEmptyInDestructor);
+		uptr->mpUPtr = &uptr;
+		uptr.reset();
+		EATEST_VERIFY(CheckUPtrEmptyInDestructor::mCheckUPtrEmpty);
+	}
+
+	{
+		// Test that unique_ptr<[]> internal pointer is reset before calling the destructor
+		CheckUPtrArrayEmptyInDestructor::mCheckUPtrEmpty = false;
+
+		unique_ptr<CheckUPtrArrayEmptyInDestructor[]> uptr(new CheckUPtrArrayEmptyInDestructor[1]);
+		uptr[0].mpUPtr = &uptr;
+		uptr.reset();
+		EATEST_VERIFY(CheckUPtrArrayEmptyInDestructor::mCheckUPtrEmpty);
 	}
 
 	{
@@ -538,23 +598,21 @@ static int Test_unique_ptr()
 			// Consider the following for standards compliance.
 			// eastl::shared_ptr<A, EASTLCoreDeleterAdapter> foo(pA, EASTLCoreDeleterAdapter());
 
-			const int cacheAllocationCount = gEASTLTest_AllocationCount;
+			const int cacheAllocationCount = gEASTLTest_AllocationCount.load(eastl::memory_order_relaxed);
 
 			using namespace EA::Allocator;
 
-			EASTLCoreAllocatorAdapter ta;              
-
+			EASTLCoreAllocatorAdapter ta;
 			void* pMem = ta.allocate(sizeof(A));
+
 			EATEST_VERIFY(pMem != nullptr);     
-			EATEST_VERIFY(gEASTLTest_AllocationCount > cacheAllocationCount);
+			EATEST_VERIFY(gEASTLTest_AllocationCount.load(eastl::memory_order_relaxed) > cacheAllocationCount);
 			{            
 				A* pA = new (pMem) A();
 				eastl::shared_ptr<A> foo(pA, EASTLCoreDeleterAdapter());  // Not standards complaint code.  Update EASTL implementation to provide the type of the deleter.
-				pA->~A();
 			}
-			
-			EATEST_VERIFY(gEASTLTest_AllocationCount == cacheAllocationCount);
-			EATEST_VERIFY(A::mCount == 0);      
+			EATEST_VERIFY(gEASTLTest_AllocationCount.load(eastl::memory_order_relaxed) == cacheAllocationCount);
+			EATEST_VERIFY(A::mCount == 0);
 		#endif
 	}
 
@@ -642,55 +700,47 @@ static int Test_unique_ptr()
 		pT6[0].mc = 17;
 		EATEST_VERIFY(pT6[0].mc == 17);
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// unique_ptr(pointer pValue, typename eastl::remove_reference<Deleter>::type&& deleter) noexcept
-			unique_ptr<A[], CustomArrayDeleter> pT7(new A[18], CustomArrayDeleter());
-			pT7[0].mc = 18;
-			EATEST_VERIFY(pT7[0].mc == 18);
+		// unique_ptr(pointer pValue, typename eastl::remove_reference<Deleter>::type&& deleter) noexcept
+		unique_ptr<A[], CustomArrayDeleter> pT7(new A[18], CustomArrayDeleter());
+		pT7[0].mc = 18;
+		EATEST_VERIFY(pT7[0].mc == 18);
 
-			// unique_ptr(this_type&& x) noexcept
-			unique_ptr<A[], CustomArrayDeleter> pT8(eastl::move(pT7));
-			EATEST_VERIFY(pT8[0].mc == 18);
+		// unique_ptr(this_type&& x) noexcept
+		unique_ptr<A[], CustomArrayDeleter> pT8(eastl::move(pT7));
+		EATEST_VERIFY(pT8[0].mc == 18);
 
-			// unique_ptr(unique_ptr<U, E>&& u, ...)
-			unique_ptr<A[], default_delete<A[]> > pT9(eastl::move(pT2));
-			EATEST_VERIFY(pT9[0].mc == 3);
+		// unique_ptr(unique_ptr<U, E>&& u, ...)
+		unique_ptr<A[], default_delete<A[]> > pT9(eastl::move(pT2));
+		EATEST_VERIFY(pT9[0].mc == 3);
 
-			// this_type& operator=(this_type&& u) noexcept
-			// operator=(unique_ptr<U, E>&& u) noexcept
-			//unique_ptr<void, CustomDeleter> pTVoid;
-			//unique_ptr<int, CustomDeleter>  pTInt(new int(1));
-			//pTVoid.operator=<int, CustomDeleter>(eastl::move(pTInt));  // This doesn't work because CustomDeleter doesn't know how to delete void*. Need to rework this test.
+		// this_type& operator=(this_type&& u) noexcept
+		// operator=(unique_ptr<U, E>&& u) noexcept
+		//unique_ptr<void, CustomDeleter> pTVoid;
+		//unique_ptr<int, CustomDeleter>  pTInt(new int(1));
+		//pTVoid.operator=<int, CustomDeleter>(eastl::move(pTInt));  // This doesn't work because CustomDeleter doesn't know how to delete void*. Need to rework this test.
 
-			// this_type& operator=(nullptr_t) noexcept
-			pT6 = nullptr;
-			EATEST_VERIFY(pT6.get() == (A*)0);
-		#endif
+		// this_type& operator=(nullptr_t) noexcept
+		pT6 = nullptr;
+		EATEST_VERIFY(pT6.get() == (A*)0);
 
 		// unique_ptr<> make_unique(Args&&... args);
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			unique_ptr<NamedClass> p = eastl::make_unique<NamedClass>("test", "test2");
-			EATEST_VERIFY(EA::StdC::Strcmp(p->mpName, "test") == 0 && EA::StdC::Strcmp(p->mpName2, "test2") == 0);
+		unique_ptr<NamedClass> p = eastl::make_unique<NamedClass>("test", "test2");
+		EATEST_VERIFY(EA::StdC::Strcmp(p->mpName, "test") == 0 && EA::StdC::Strcmp(p->mpName2, "test2") == 0);
 
-			unique_ptr<NamedClass[]> pArray = eastl::make_unique<NamedClass[]>(4);
-			pArray[0].mpName = "test";
-			EATEST_VERIFY(EA::StdC::Strcmp(p->mpName, "test") == 0);
+		unique_ptr<NamedClass[]> pArray = eastl::make_unique<NamedClass[]>(4);
+		pArray[0].mpName = "test";
+		EATEST_VERIFY(EA::StdC::Strcmp(p->mpName, "test") == 0);
 
-			#ifdef EASTL_TEST_DISABLED_PENDING_SUPPORT
-			{
-				const size_t kAlignedStructAlignment = 512;
-				struct AlignedStruct {} EA_ALIGN(kAlignedStructAlignment);
+		const size_t kAlignedStructAlignment = 512;
+		struct alignas(kAlignedStructAlignment) AlignedStruct {};
 
-				unique_ptr<AlignedStruct> pAlignedStruct = eastl::make_unique<AlignedStruct>();
-				EATEST_VERIFY_F(intptr_t(pAlignedStruct.get()) % kAlignedStructAlignment == 0, "pAlignedStruct didn't have proper alignment");
-			}
-			#endif
+		unique_ptr<AlignedStruct> pAlignedStruct = eastl::make_unique<AlignedStruct>();
+		EATEST_VERIFY_MSG(intptr_t(pAlignedStruct.get()) % kAlignedStructAlignment == 0, "pAlignedStruct didn't have proper alignment");
 
-			//Expected to not be valid:
-			//unique_ptr<NamedClass[4]> p2Array4 = eastl::make_unique<NamedClass[4]>();
-			//p2Array4[0].mpName = "test";
-			//EATEST_VERIFY(EA::StdC::Strcmp(p2Array4[0].mpName, "test") == 0);
-		#endif
+		//Expected to not be valid:
+		//unique_ptr<NamedClass[4]> p2Array4 = eastl::make_unique<NamedClass[4]>();
+		//p2Array4[0].mpName = "test";
+		//EATEST_VERIFY(EA::StdC::Strcmp(p2Array4[0].mpName, "test") == 0);
 	}
 
 	EATEST_VERIFY(A::mCount == 0); // This check verifies that no A instances were lost, which also verifies that the [] version of the deleter was used in all cases.
@@ -744,6 +794,38 @@ static int Test_unique_ptr()
 				ptr = eastl::move(newPtr);  // Deletes int(3) and assigns mpValue to int(4)
 				EATEST_VERIFY(ptr.get() && ptr[0] == 3 && ptr[1] == 4 && ptr[2] == 5);
 				EATEST_VERIFY(newPtr.get() == nullptr);
+			}
+		#endif
+
+		#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+			{
+				unique_ptr<int> pT1(new int(5));
+				unique_ptr<int> pT2(new int(10));
+				unique_ptr<int> pT3(new int(0));
+
+				EATEST_VERIFY((pT1 <=> pT2) != 0);
+				EATEST_VERIFY((pT2 <=> pT1) != 0);
+
+				EATEST_VERIFY((pT1 <=> pT2) < 0);
+				EATEST_VERIFY((pT1 <=> pT2) <= 0);
+				EATEST_VERIFY((pT2 <=> pT1) > 0);
+				EATEST_VERIFY((pT2 <=> pT1) >= 0);
+
+				EATEST_VERIFY((pT3 <=> pT1) < 0);
+				EATEST_VERIFY((pT3 <=> pT2) < 0);
+				EATEST_VERIFY((pT1 <=> pT3) > 0);
+				EATEST_VERIFY((pT2 <=> pT3) > 0);
+
+				unique_ptr<A> pT4(new A(5));
+				unique_ptr<A> pT5(new A(10));
+
+				EATEST_VERIFY((pT4 <=> pT5) != 0);
+				EATEST_VERIFY((pT5 <=> pT4) != 0);
+
+				EATEST_VERIFY((pT4 <=> pT5) < 0);
+				EATEST_VERIFY((pT4 <=> pT5) <= 0);
+				EATEST_VERIFY((pT5 <=> pT4) > 0);
+				EATEST_VERIFY((pT5 <=> pT4) >= 0);
 			}
 		#endif
 
@@ -839,6 +921,11 @@ static int Test_scoped_ptr()
 		delete pA;
 	}
 
+	{
+		scoped_ptr<void> ptr(new int);
+		(void)ptr;
+	}
+
 	EATEST_VERIFY(A::mCount == 0);
 
 	return nErrorCount;
@@ -894,6 +981,11 @@ static int Test_scoped_array()
 		scoped_array<A> ptr(new A[6]);
 		A* pArray = ptr.detach();
 		delete[] pArray;
+	}
+
+	{
+		scoped_array<void> ptr(new int[6]);
+		(void)ptr;
 	}
 
 	EATEST_VERIFY(A::mCount == 0);
@@ -1020,6 +1112,40 @@ static int Test_shared_ptr()
 	}
 
 
+	// Regression test reported by a user.
+	// typename eastl::enable_if<!eastl::is_array<U>::value && eastl::is_convertible<U*, element_type*>::value, this_type&>::type
+	// operator=(unique_ptr<U, Deleter> && uniquePtr)
+	{
+		{
+			shared_ptr<A> rT1(new A(42));
+			unique_ptr<B> rT2(new B);  // default ctor uses 0
+			rT2->mc = 115;
+
+			EATEST_VERIFY(rT1->mc == 42);
+			EATEST_VERIFY(rT2->mc == 115);
+
+			rT1 = eastl::move(rT2);
+
+			EATEST_VERIFY(rT1->mc == 115);
+			// EATEST_VERIFY(rT2->mc == 115);  // state of object post-move is undefined.
+		}
+
+		// test the state of the shared_ptr::operator= return
+		{
+			shared_ptr<A> rT1(new A(42));
+			unique_ptr<B> rT2(new B);  // default ctor uses 0
+			rT2->mc = 115;
+
+			shared_ptr<A> operatorReturn = (rT1 = eastl::move(rT2));
+
+			EATEST_VERIFY(operatorReturn == rT1);
+
+			EATEST_VERIFY(operatorReturn->mc == 115);
+			// EATEST_VERIFY(rT1->mc == 115); // implied as both are pointing to the same address
+		}
+	}
+
+
 	{ // Test member template functions.
 		shared_ptr<ChildClass>      pCC(new GrandChildClass);
 		shared_ptr<ParentClass>     pPC(pCC);
@@ -1079,6 +1205,15 @@ static int Test_shared_ptr()
 
 		pVoid = shared_ptr<ParentClass>(new ParentClass, smart_ptr_deleter<ParentClass>());
 		EATEST_VERIFY(pVoid.get() != NULL);
+	}
+
+
+	{ // Test shared_ptr lambda deleter
+		auto deleter = [](int*) {}; 
+		eastl::shared_ptr<int> ptr(nullptr, deleter);
+
+		EATEST_VERIFY(!ptr);
+		EATEST_VERIFY(ptr.get() == nullptr);
 	}
 
 
@@ -1245,7 +1380,7 @@ static int Test_shared_ptr()
 	{
 		EA::Thread::ThreadParameters    mThreadParams;
 		EA::Thread::Thread              mThread;
-		volatile bool                   mbShouldContinue;
+		eastl::atomic<bool>             mbShouldContinue;
 		int                             mnErrorCount;
 		eastl::shared_ptr<TestObject>*  mpSPTO;
 		eastl::weak_ptr<TestObject>*    mpWPTO;
@@ -1258,7 +1393,7 @@ static int Test_shared_ptr()
 		{
 			int& nErrorCount = mnErrorCount; // declare nErrorCount so that EATEST_VERIFY can work, as it depends on it being declared.
 
-			while(mbShouldContinue)
+			while(mbShouldContinue.load(eastl::memory_order_relaxed))
 			{
 				EA::UnitTest::ThreadSleepRandom(1, 10);
 
@@ -1313,7 +1448,7 @@ static int Test_shared_ptr_thread()
 			EA::UnitTest::ThreadSleep(2000);
 
 			for(size_t i = 0; i < EAArrayCount(thread); i++)
-				thread[i].mbShouldContinue = false;
+				thread[i].mbShouldContinue.store(false, eastl::memory_order_relaxed);
 
 			for(size_t i = 0; i < EAArrayCount(thread); i++)
 			{
@@ -1355,6 +1490,10 @@ static int Test_shared_ptr_thread()
 			spTO = atomic_exchange(&spTO2, spTO);
 			EATEST_VERIFY(spTO->mX == 56);
 			EATEST_VERIFY(spTO2->mX == 77);
+			
+			spTO = atomic_exchange_explicit(&spTO2, spTO);
+			EATEST_VERIFY(spTO->mX == 77);
+			EATEST_VERIFY(spTO2->mX == 56);
 
 			// bool atomic_compare_exchange_strong(shared_ptr<T>* pSharedPtr, shared_ptr<T>* pSharedPtrCondition, shared_ptr<T> sharedPtrNew);
 			// bool atomic_compare_exchange_weak(shared_ptr<T>* pSharedPtr, shared_ptr<T>* pSharedPtrCondition, shared_ptr<T> sharedPtrNew);
@@ -1363,12 +1502,12 @@ static int Test_shared_ptr_thread()
 			shared_ptr<TestObject> spTO3 = atomic_load(&spTO2);
 			bool result = atomic_compare_exchange_strong(&spTO3, &spTO, make_shared<TestObject>(88));   // spTO3 != spTO, so this should do no exchange and return false.
 			EATEST_VERIFY(!result);
-			EATEST_VERIFY(spTO3->mX == 77);
-			EATEST_VERIFY(spTO->mX == 77);
+			EATEST_VERIFY(spTO3->mX == 56);
+			EATEST_VERIFY(spTO->mX == 56);
 
 			result = atomic_compare_exchange_strong(&spTO3, &spTO2, make_shared<TestObject>(88));       // spTO3 == spTO2, so this should succeed.
 			EATEST_VERIFY(result);
-			EATEST_VERIFY(spTO2->mX == 77);
+			EATEST_VERIFY(spTO2->mX == 56);
 			EATEST_VERIFY(spTO3->mX == 88);
 		}
 	#endif
@@ -1468,6 +1607,22 @@ static int Test_weak_ptr()
 		EATEST_VERIFY(!(pFoo < qFoo) && !(qFoo < pFoo)); // p and q share ownership
 	}
 
+	{   // weak_from_this const
+		shared_ptr<const foo> pFoo(new foo);
+		weak_ptr<const foo> qFoo = pFoo->weak_from_this();
+
+		EATEST_VERIFY(pFoo == qFoo.lock());
+		EATEST_VERIFY(!(pFoo < qFoo.lock()) && !(qFoo.lock() < pFoo)); // p and q share ownership
+	}
+
+	{   // weak_from_this
+		shared_ptr<foo> pFoo(new foo);
+		weak_ptr<foo> qFoo = pFoo->weak_from_this();
+
+		EATEST_VERIFY(pFoo == qFoo.lock());
+		EATEST_VERIFY(!(pFoo < qFoo.lock()) && !(qFoo.lock() < pFoo)); // p and q share ownership
+	}
+	
 	return nErrorCount;
 }
 
@@ -1784,6 +1939,41 @@ static int Test_intrusive_ptr()
 		EATEST_VERIFY(ip7);
 	}
 
+	{ 
+		// Test move-ctor
+		{
+			VERIFY(RefCountTest::mCount == 0);
+			intrusive_ptr<RefCountTest> ip1(new RefCountTest);
+			VERIFY(RefCountTest::mCount == 1);
+			VERIFY(ip1->mRefCount == 1);
+			{
+				intrusive_ptr<RefCountTest> ip2(eastl::move(ip1));
+				VERIFY(ip1.get() != ip2.get());
+				VERIFY(ip2->mRefCount == 1);
+				VERIFY(RefCountTest::mCount == 1);
+			}
+			VERIFY(ip1.get() == nullptr);
+			VERIFY(RefCountTest::mCount == 0);
+		}
+
+		// Test move-assignment
+		{
+			VERIFY(RefCountTest::mCount == 0);
+			intrusive_ptr<RefCountTest> ip1(new RefCountTest);
+			VERIFY(RefCountTest::mCount == 1);
+			VERIFY(ip1->mRefCount == 1);
+			{
+				intrusive_ptr<RefCountTest> ip2; 
+				ip2 = eastl::move(ip1);
+				VERIFY(ip1.get() != ip2.get());
+				VERIFY(ip2->mRefCount == 1);
+				VERIFY(RefCountTest::mCount == 1);
+			}
+			VERIFY(ip1.get() == nullptr);
+			VERIFY(RefCountTest::mCount == 0);
+		}
+	}
+
 	{   // Test modifiers (assign, attach, detach, reset, swap)
 		RefCountTest* const p1 = new RefCountTest;
 		RefCountTest* const p2 = new RefCountTest;
@@ -1994,11 +2184,70 @@ static int Test_safe_ptr()
 	return nErrorCount;
 }
 
+template<typename T, typename U>
+bool equivalent_owner_before(const T& lhs, const U& rhs) { return !lhs.owner_before(rhs) && !rhs.owner_before(lhs); }
+
+template<typename T, typename U, typename Compare>
+bool equivalent(const T& lhs, const U& rhs, const Compare& cmp) { return !cmp(lhs, rhs) && !cmp(rhs, lhs); }
+
+static int Test_owner_before()
+{
+	using namespace SmartPtrTest;
+	using namespace eastl;
+
+	int nErrorCount = 0;
+
+	struct Foo
+	{
+		int n1;
+		int n2;
+		Foo(int a, int b) : n1(a), n2(b) {}
+	};
+
+	auto p1 = make_shared<Foo>(1, 2);
+	shared_ptr<int> p2(p1, &p1->n1);
+	shared_ptr<int> p3(p1, &p1->n2);
+
+	auto unrelated = make_shared<Foo>(1, 2);
+
+	// owner_before
+	{
+		EATEST_VERIFY(equivalent_owner_before(p1, p2));
+		EATEST_VERIFY(equivalent_owner_before(p1, p3));
+		EATEST_VERIFY(equivalent_owner_before(p2, p3));
+
+		EATEST_VERIFY(!equivalent_owner_before(p1, unrelated));
+		EATEST_VERIFY(!equivalent_owner_before(p2, unrelated));
+		EATEST_VERIFY(!equivalent_owner_before(p3, unrelated));
+	}
+
+	// owner_less<shared_ptr<T>>
+	{
+		EATEST_VERIFY(equivalent(p1, p1, owner_less<shared_ptr<Foo>>{}));
+		EATEST_VERIFY(equivalent(p2, p3, owner_less<shared_ptr<int>>{}));
+
+		EATEST_VERIFY(!equivalent(p1, unrelated, owner_less<shared_ptr<Foo>>{}));
+	}
+
+	// owner_less<void>
+	{
+		owner_less<void> cmp;
+
+		EATEST_VERIFY(equivalent(p1, p2, cmp));
+		EATEST_VERIFY(equivalent(p1, p3, cmp));
+		EATEST_VERIFY(equivalent(p2, p3, cmp));
+
+		EATEST_VERIFY(!equivalent(p1, unrelated, cmp));
+		EATEST_VERIFY(!equivalent(p2, unrelated, cmp));
+		EATEST_VERIFY(!equivalent(p3, unrelated, cmp));
+	}
+
+	return nErrorCount;
+}
+
 
 int TestSmartPtr()
 {
-	EASTLTest_Printf("TestSmartPtr\n");
-
 	using namespace SmartPtrTest;
 	using namespace eastl;
 
@@ -2015,6 +2264,7 @@ int TestSmartPtr()
 	nErrorCount += Test_linked_array();
 	nErrorCount += Test_intrusive_ptr();
 	nErrorCount += Test_safe_ptr();
+	nErrorCount += Test_owner_before();
 
 	EATEST_VERIFY(A::mCount == 0);
 	EATEST_VERIFY(RefCountTest::mCount == 0);
@@ -2028,11 +2278,7 @@ int TestSmartPtr()
 	return nErrorCount;
 }
 
-
-
-#if defined(_MSC_VER)
-	#pragma warning(pop)
-#endif
+EA_RESTORE_VC_WARNING()  // 4702
 
 
 

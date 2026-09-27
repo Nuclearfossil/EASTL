@@ -4,6 +4,7 @@
 
 
 #include "EASTLTest.h"
+#include <EAStdC/EASprintf.h>
 #include <EASTL/bonus/ring_buffer.h>
 #include <EASTL/bonus/fixed_ring_buffer.h>
 #include <EASTL/vector.h>
@@ -32,16 +33,26 @@ template class eastl::ring_buffer< int,        eastl::list<int>        >;
 template class eastl::ring_buffer< Align64,    eastl::list<Align64>    >;
 template class eastl::ring_buffer< TestObject, eastl::list<TestObject> >;
 
+// TODO(rparolin):  To consider adding support for eastl::array. 
+// template class eastl::ring_buffer< int, eastl::array<int, 64>>;
+
 typedef eastl::fixed_string<char, 256, false>          RBFixedString;
 typedef eastl::fixed_vector<RBFixedString, 100, false> RBFixedStringVector;
 typedef RBFixedStringVector::overflow_allocator_type   RBFixedStringVectorOverflowAllocator;
 template class eastl::ring_buffer<RBFixedString, RBFixedStringVector, RBFixedStringVectorOverflowAllocator>;
 
+typedef eastl::fixed_vector<int, 100, false> RBFixedIntVector;
+template class eastl::ring_buffer<int, RBFixedIntVector, RBFixedIntVector::overflow_allocator_type>;
+// template class eastl::ring_buffer<int, RBFixedIntVector>;  // currently fails to compile
+
+typedef eastl::fixed_vector<int, 100> RBFixedIntVectorWithOverFlow;
+template class eastl::ring_buffer<int, RBFixedIntVectorWithOverFlow, RBFixedIntVectorWithOverFlow::overflow_allocator_type>; 
+// template class eastl::ring_buffer<int, RBFixedIntVectorWithOverFlow>; // currently fails to compile
+
+
 
 int TestRingBuffer()
 {
-	EASTLTest_Printf("TestRingBuffer\n");
-
 	int nErrorCount = 0;
 
 	// GCC prior to 4.1 has a fatal code generation bug in string arrays, which we use below.
@@ -72,7 +83,8 @@ int TestRingBuffer()
 		typedef ring_buffer< string, vector<string> > RBVectorString;
 
 		int  counter = 0;
-		char counterBuffer[32];
+		const int kBufferSize = 32;
+		char counterBuffer[kBufferSize];
 
 		// explicit ring_buffer(size_type size = 0);
 		const int kOriginalCapacity = 50;
@@ -110,7 +122,7 @@ int TestRingBuffer()
 		}
 
 		// void push_back(const value_type& value);
-		sprintf(counterBuffer, "%d", counter++);
+		EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 		rbVectorString.push_back(string(counterBuffer));
 		EATEST_VERIFY(rbVectorString.validate());
 		EATEST_VERIFY(!rbVectorString.empty());
@@ -139,7 +151,7 @@ int TestRingBuffer()
 		EATEST_VERIFY(rbVectorString.validate_iterator(it) == (isf_valid | isf_current | isf_can_dereference));
 		EATEST_VERIFY(it->empty());
 
-		sprintf(counterBuffer, "%d", counter++);
+		EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 		*it = counterBuffer;
 		EATEST_VERIFY(*it == "1");
 
@@ -163,21 +175,21 @@ int TestRingBuffer()
 		// Now we start hammering the ring buffer with push_back.
 		for(eastl_size_t i = 0, iEnd = rbVectorString.capacity() * 5; i != iEnd; i++)
 		{
-			sprintf(counterBuffer, "%d", counter++);
+			EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 			rbVectorString.push_back(string(counterBuffer));
 			EATEST_VERIFY(rbVectorString.validate());
 		}
 
 		int  counterCheck = counter - 1;
-		char counterCheckBuffer[32];
-		sprintf(counterCheckBuffer, "%d", counterCheck);
+		char counterCheckBuffer[kBufferSize];
+		EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", counterCheck);
 		EATEST_VERIFY(rbVectorString.back() == counterCheckBuffer);
 
 		// reverse_iterator rbegin();
 		// reverse_iterator rend();
 		for(RBVectorString::reverse_iterator ri = rbVectorString.rbegin(); ri != rbVectorString.rend(); ++ri)
 		{
-			sprintf(counterCheckBuffer, "%d", counterCheck--);
+			EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", counterCheck--);
 			EATEST_VERIFY(*ri == counterCheckBuffer);
 		}
 
@@ -189,7 +201,7 @@ int TestRingBuffer()
 		{
 			EATEST_VERIFY(rbVectorString.validate_iterator(i) == (isf_valid | isf_current | isf_can_dereference));
 			EATEST_VERIFY(*i == counterCheckBuffer);
-			sprintf(counterCheckBuffer, "%d", ++counterCheck);
+			EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", ++counterCheck);
 		}
 
 		// void clear();
@@ -203,7 +215,7 @@ int TestRingBuffer()
 		// Not easy to test the expected values without some tedium.
 		for(int j = 0; j < 10000 + (gEASTL_TestLevel * 10000); j++)
 		{
-			sprintf(counterBuffer, "%d", counter++);
+			EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 
 			const eastl_size_t op = rng.RandLimit(12);
 			const eastl_size_t s  = rbVectorString.size();
@@ -539,6 +551,56 @@ int TestRingBuffer()
 		EATEST_VERIFY(rbVectorInt[5] == 4);
 	}
 
+	{
+		// Comparation operator ==, operator <
+		// Fix bug mentioned in https://github.com/electronicarts/EASTL/issues/511
+		typedef ring_buffer<int, vector<int>> RBVectorInt;
+
+		RBVectorInt rbVectorInt(3);
+
+		rbVectorInt.push_back(0);
+		rbVectorInt.push_back(1);
+		rbVectorInt.push_back(2);
+		rbVectorInt.push_back(3);
+		rbVectorInt.push_back(4);
+
+		EATEST_VERIFY(rbVectorInt[0] == 2);
+		EATEST_VERIFY(rbVectorInt[1] == 3);
+		EATEST_VERIFY(rbVectorInt[2] == 4);
+
+		RBVectorInt rbVectorInt2({3, 4, 2});
+		RBVectorInt rbVectorInt3({2, 3, 4});
+		RBVectorInt rbVectorInt4({3, 4, 5});
+
+		EATEST_VERIFY(rbVectorInt != rbVectorInt2);
+		EATEST_VERIFY(rbVectorInt == rbVectorInt3);
+		EATEST_VERIFY(rbVectorInt < rbVectorInt4);
+
+		// Different size
+		RBVectorInt rbVectorInt5({1, 2});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt5);
+		EATEST_VERIFY(rbVectorInt > rbVectorInt5);
+
+		RBVectorInt rbVectorInt6({2, 3});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt6);
+		EATEST_VERIFY(rbVectorInt > rbVectorInt6);
+
+		RBVectorInt rbVectorInt7({3, 4});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt7);
+		EATEST_VERIFY(rbVectorInt < rbVectorInt7);
+
+		RBVectorInt rbVectorInt8({1, 2, 3, 4});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt8);
+		EATEST_VERIFY(rbVectorInt > rbVectorInt8);
+
+		RBVectorInt rbVectorInt9({2, 3, 4, 5});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt9);
+		EATEST_VERIFY(rbVectorInt < rbVectorInt9);
+
+		RBVectorInt rbVectorInt10({3, 4, 5, 6});
+		EATEST_VERIFY(rbVectorInt != rbVectorInt10);
+		EATEST_VERIFY(rbVectorInt < rbVectorInt10);
+	}
 
 	{
 		EA::UnitTest::Rand rng(EA::UnitTest::GetRandSeed());
@@ -546,7 +608,8 @@ int TestRingBuffer()
 		typedef ring_buffer< string, list<string> > RBListString;
 
 		int  counter = 0;
-		char counterBuffer[32];
+		const int kBufferSize = 32;
+		char counterBuffer[kBufferSize];
 
 		// explicit ring_buffer(size_type size = 0);
 		const int kOriginalCapacity = 50;
@@ -584,7 +647,7 @@ int TestRingBuffer()
 		}
 
 		// void push_back(const value_type& value);
-		sprintf(counterBuffer, "%d", counter++);
+		EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 		rbListString.push_back(string(counterBuffer));
 		EATEST_VERIFY(rbListString.validate());
 		EATEST_VERIFY(!rbListString.empty());
@@ -613,7 +676,7 @@ int TestRingBuffer()
 		EATEST_VERIFY(rbListString.validate_iterator(it) == (isf_valid | isf_current | isf_can_dereference));
 		EATEST_VERIFY(it->empty());
 
-		sprintf(counterBuffer, "%d", counter++);
+		EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 		*it = counterBuffer;
 		EATEST_VERIFY(*it == "1");
 
@@ -637,21 +700,21 @@ int TestRingBuffer()
 		// Now we start hammering the ring buffer with push_back.
 		for(eastl_size_t i = 0, iEnd = rbListString.capacity() * 5; i != iEnd; i++)
 		{
-			sprintf(counterBuffer, "%d", counter++);
+			EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 			rbListString.push_back(string(counterBuffer));
 			EATEST_VERIFY(rbListString.validate());
 		}
 
 		int  counterCheck = counter - 1;
-		char counterCheckBuffer[32];
-		sprintf(counterCheckBuffer, "%d", counterCheck);
+		char counterCheckBuffer[kBufferSize];
+		EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", counterCheck);
 		EATEST_VERIFY(rbListString.back() == counterCheckBuffer);
 
 		// reverse_iterator rbegin();
 		// reverse_iterator rend();
 		for(RBListString::reverse_iterator ri = rbListString.rbegin(); ri != rbListString.rend(); ++ri)
 		{
-			sprintf(counterCheckBuffer, "%d", counterCheck--);
+			EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", counterCheck--);
 			EATEST_VERIFY(*ri == counterCheckBuffer);
 		}
 
@@ -663,7 +726,7 @@ int TestRingBuffer()
 		{
 			EATEST_VERIFY(rbListString.validate_iterator(i) == (isf_valid | isf_current | isf_can_dereference));
 			EATEST_VERIFY(*i == counterCheckBuffer);
-			sprintf(counterCheckBuffer, "%d", ++counterCheck);
+			EA::StdC::Snprintf(counterCheckBuffer, kBufferSize, "%d", ++counterCheck);
 		}
 
 		// void clear();
@@ -677,7 +740,7 @@ int TestRingBuffer()
 		// Not easy to test the expected values without some tedium.
 		for(int j = 0; j < 10000 + (gEASTL_TestLevel * 10000); j++)
 		{
-			sprintf(counterBuffer, "%d", counter++);
+			EA::StdC::Snprintf(counterBuffer, kBufferSize, "%d", counter++);
 
 			const eastl_size_t op = rng.RandLimit(12);
 			const eastl_size_t s  = rbListString.size();
@@ -939,23 +1002,21 @@ int TestRingBuffer()
 		EATEST_VERIFY(rbListString5.back() == "9");
 
 
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-			// ring_buffer(this_type&& x);
-			// ring_buffer(this_type&& x, const allocator_type& allocator);
-			// this_type& operator=(this_type&& x);
+		// ring_buffer(this_type&& x);
+		// ring_buffer(this_type&& x, const allocator_type& allocator);
+		// this_type& operator=(this_type&& x);
 
-			RBListString rbListStringM1(eastl::move(rbListString5));
-			EATEST_VERIFY(rbListStringM1.validate() && rbListString5.validate());
-			EATEST_VERIFY((rbListStringM1.size() == 10) && (rbListString5.size() == 0));
+		RBListString rbListStringM1(eastl::move(rbListString5));
+		EATEST_VERIFY(rbListStringM1.validate() && rbListString5.validate());
+		EATEST_VERIFY((rbListStringM1.size() == 10) && (rbListString5.size() == 0));
 
-			RBListString rbListStringM2(eastl::move(rbListStringM1), RBListString::allocator_type());
-			EATEST_VERIFY(rbListStringM2.validate() && rbListStringM1.validate());
-			EATEST_VERIFY((rbListStringM2.size() == 10) && (rbListStringM1.size() == 0));
+		RBListString rbListStringM2(eastl::move(rbListStringM1), RBListString::allocator_type());
+		EATEST_VERIFY(rbListStringM2.validate() && rbListStringM1.validate());
+		EATEST_VERIFY((rbListStringM2.size() == 10) && (rbListStringM1.size() == 0));
 
-			rbListStringM1 = eastl::move(rbListStringM2);
-			EATEST_VERIFY(rbListStringM1.validate() && rbListStringM2.validate());
-			EATEST_VERIFY((rbListStringM1.size() == 10) && (rbListStringM2.size() == 0));
-		#endif
+		rbListStringM1 = eastl::move(rbListStringM2);
+		EATEST_VERIFY(rbListStringM1.validate() && rbListStringM2.validate());
+		EATEST_VERIFY((rbListStringM1.size() == 10) && (rbListStringM2.size() == 0));
 	}
 
 
@@ -1004,19 +1065,7 @@ int TestRingBuffer()
 	{
 		// Regression for bug with iterator subtraction
 		typedef eastl::ring_buffer<int>		IntBuffer_t;
-#if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		IntBuffer_t intBuffer = { 0, 1, 2, 3, 4, 5, 6, 7 };
-#else
-		IntBuffer_t intBuffer(8);
-		intBuffer.push_back(0);
-		intBuffer.push_back(1);
-		intBuffer.push_back(2);
-		intBuffer.push_back(3);
-		intBuffer.push_back(4);
-		intBuffer.push_back(5);
-		intBuffer.push_back(6);
-		intBuffer.push_back(7);
-#endif
 		IntBuffer_t::iterator it = intBuffer.begin();
 
 		EATEST_VERIFY(*it == 0);
@@ -1088,6 +1137,46 @@ int TestRingBuffer()
 			EATEST_VERIFY(rb.size() == 3);
 		}
 		#endif
+	}
+
+	{
+		const auto MAX_ELEMENTS = EASTL_MAX_STACK_USAGE;
+
+		// create a container simulating LARGE state that exceeds
+		// our maximum stack size macro. This forces our ring_buffer implementation
+		// to allocate the container in the heap instead of holding it on the stack.
+		// This test ensures that allocation is NOT serviced by the default global heap.  
+		// Instead it is serviced by the allocator of the ring_buffers underlying container.
+		struct PaddedVector : public eastl::vector<int, MallocAllocator>
+		{
+			char mPadding[EASTL_MAX_STACK_USAGE];
+		};
+
+		MallocAllocator::reset_all();
+		CountingAllocator::resetCount();
+
+		{
+			CountingAllocator countingAlloc;
+			AutoDefaultAllocator _(&countingAlloc);
+
+			eastl::ring_buffer<int, PaddedVector> intBuffer(1);  
+			for (int i = 0; i < MAX_ELEMENTS; i++)
+				intBuffer.push_back(i);
+
+		#if !EASTL_OPENSOURCE
+			const auto cacheAllocationCount = gEASTLTest_TotalAllocationCount.load(eastl::memory_order_relaxed);
+		#endif
+			const auto cacheMallocatorCount = MallocAllocator::mAllocCountAll;
+			const auto forceReAllocSize = intBuffer.size() * 2;
+
+			intBuffer.resize(forceReAllocSize);
+
+		#if !EASTL_OPENSOURCE
+			VERIFY(cacheAllocationCount == gEASTLTest_TotalAllocationCount.load(eastl::memory_order_relaxed));
+		#endif
+			VERIFY(cacheMallocatorCount <  MallocAllocator::mAllocCountAll);
+			VERIFY(CountingAllocator::neverUsed());
+		}
 	}
 
 	return nErrorCount;

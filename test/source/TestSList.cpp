@@ -5,6 +5,7 @@
 #include "EASTLTest.h"
 #include <EASTL/slist.h>
 #include <EABase/eabase.h>
+#include <EASTL/fixed_allocator.h>
 
 using namespace eastl;
 
@@ -50,8 +51,6 @@ struct TestObj
 // TestSList
 int TestSList()
 {
-	EASTLTest_Printf("TestSList\n");
-
 	int nErrorCount = 0;
 
 	// slist();
@@ -108,7 +107,6 @@ int TestSList()
 
 	// slist(this_type&& x);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED
 		slist<int> list1; 
 		list1.resize(100,42);
 
@@ -117,7 +115,6 @@ int TestSList()
 		VERIFY(list1.empty());
 		VERIFY(!list2.empty());
 		VERIFY(list1 != list2);
-	#endif
 	}
 	
 	// slist(this_type&& x, const allocator_type& allocator);
@@ -147,15 +144,12 @@ int TestSList()
 
 	// this_type& operator=(std::initializer_list<value_type>);
 	{
-	#if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {1,2,3,4,5,6,7,8};
 		VERIFY(!list1.empty());
-	#endif
 	}
 
 	// this_type& operator=(this_type&& x);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED
 		slist<int> list1;
 		list1.resize(100, 42);
 		slist<int> list2 = eastl::move(list1);
@@ -163,7 +157,6 @@ int TestSList()
 		VERIFY(list1.empty());
 		VERIFY(!list2.empty());
 		VERIFY(list1 != list2);
-	#endif
 	}
 
 	// void swap(this_type& x);
@@ -293,97 +286,43 @@ int TestSList()
 
 
 	//     void emplace_front(Args&&... args);
-	//     void emplace_front(value_type&& value);
-	//     void emplace_front(const value_type& value);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-		{
-			slist<TestObj> list1;
-			list1.emplace_front(42);
-			VERIFY(list1.front().mI == 42);
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
+		slist<TestObj> list1;
+		VERIFY(list1.emplace_front(42).mI == 42);
+		VERIFY(list1.front().mI == 42);
+		VERIFY(list1.front().mCopyCtor == 0);
+		VERIFY(list1.front().mMoveCtor == 0);
+		VERIFY(list1.size() == 1);
+		VERIFY(list1.validate());
 
-			list1.emplace_front(1,2,3,4);
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.front().mI == (1+2+3+4));
-			VERIFY(list1.size() == 2);
-			VERIFY(list1.validate());
-		}
-	#else
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-		{
-			slist<TestObj> list1;
-			list1.emplace_front(TestObj(1,2,3,4));
-			VERIFY(list1.front().mI == (1+2+3+4));
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 1);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-		#endif
-		{
-			TestObj to1(1,2,3,4);
-			slist<TestObj> list1;
-			list1.emplace_front(to1);
-			VERIFY(list1.front().mI == (1+2+3+4));
-			VERIFY(list1.front().mCopyCtor == 1);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-	#endif
+		VERIFY(list1.emplace_front(1,2,3,4).mI == (1 + 2 + 3 + 4));
+		VERIFY(list1.front().mCopyCtor == 0);
+		VERIFY(list1.front().mMoveCtor == 0);
+		VERIFY(list1.front().mI == (1+2+3+4));
+		VERIFY(list1.size() == 2);
+		VERIFY(list1.validate());
 	}
 
 	// void      push_front(const value_type& value);
 	// reference push_front();
 	// void      push_front(value_type&& value);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
-		{
-			slist<TestObj> list1;
-			list1.push_front(TestObj(42));
-			VERIFY(list1.front().mI == 42);
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 1);
-			VERIFY(list1.size() == 1);
+		slist<TestObj> list1;
+		list1.push_front(TestObj(42));
+		VERIFY(list1.front().mI == 42);
+		VERIFY(list1.front().mCopyCtor == 0);
+		VERIFY(list1.front().mMoveCtor == 1);
+		VERIFY(list1.size() == 1);
 
-			list1.push_front();
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.front().mI == 0);
-			VERIFY(list1.size() == 2);
+		list1.push_front();
+		VERIFY(list1.front().mCopyCtor == 0);
+		VERIFY(list1.front().mMoveCtor == 0);
+		VERIFY(list1.front().mI == 0);
+		VERIFY(list1.size() == 2);
 
-			list1.push_front().mI = 1492;
-			VERIFY(list1.front().mI == 1492);
-			VERIFY(list1.validate());
-		}
-	#else
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-		{
-			slist<TestObj> list1;
-			list1.push_front(TestObj(1,2,3,4));
-			VERIFY(list1.front().mI == (1+2+3+4));
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 1);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-		#endif
-		{
-			TestObj to1(1,2,3,4);
-			slist<TestObj> list1;
-			list1.push_front(to1);
-			VERIFY(list1.front().mI == (1+2+3+4));
-			VERIFY(list1.front().mCopyCtor == 1);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-	#endif
+		list1.push_front().mI = 1492;
+		VERIFY(list1.front().mI == 1492);
+		VERIFY(list1.validate());
 	}
 
 	// void pop_front();
@@ -538,16 +477,13 @@ int TestSList()
 		VERIFY(eastl::count_if(list1.begin(), list1.end(), [](int i) { return i == 42; }) == 10);
 		VERIFY(list1.validate());
 
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		list1.insert_after(list1.begin(), {1,2,3,4,5,6,7,8,9,0});
 		VERIFY(list1.size() == 23);
 		VERIFY(list1.validate());
-	#endif
 	}
 
 	// iterator insert_after(const_iterator position, value_type&& value);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED
 		slist<TestObj> list1;
 		VERIFY(list1.empty());
 		list1.push_front();
@@ -556,24 +492,20 @@ int TestSList()
 		VERIFY(!list1.empty());
 		VERIFY((*inserted).mCopyCtor == 0);
 		VERIFY((*inserted).mMoveCtor == 1);
-	#endif
 	}
 
 	// iterator insert_after(const_iterator position, InputIterator first, InputIterator last);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3,4};
 		slist<int> list2 = {9,8,7,6,5};
 		list1.insert_after(list1.begin(), list2.begin(), list2.end());
 		VERIFY(list1 == slist<int>({0,9,8,7,6,5,1,2,3,4}));
-	#endif
 	}
 
 	// iterator emplace_after(const_iterator position, Args&&... args);
 	// iterator emplace_after(const_iterator position, value_type&& value);
 	// iterator emplace_after(const_iterator position, const value_type& value);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED && EASTL_VARIADIC_TEMPLATES_ENABLED
 		slist<TestObj> list1;
 		list1.emplace_after(list1.before_begin(), 42);
 		VERIFY(list1.front().mI == 42);
@@ -588,35 +520,11 @@ int TestSList()
 		VERIFY(list1.front().mI == (1+2+3+4));
 		VERIFY(list1.size() == 2);
 		VERIFY(list1.validate());
-	#else
-		#if EASTL_MOVE_SEMANTICS_ENABLED
-		{
-			slist<TestObj> list1;
-			list1.emplace_after(list1.before_begin(), TestObj(42));
-			VERIFY(list1.front().mI == 42);
-			VERIFY(list1.front().mCopyCtor == 0);
-			VERIFY(list1.front().mMoveCtor == 1);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-		#endif
-		{
-			slist<TestObj> list1;
-			TestObj to(42);
-			list1.emplace_after(list1.before_begin(), to);
-			VERIFY(list1.front().mI == 42);
-			VERIFY(list1.front().mCopyCtor == 1);
-			VERIFY(list1.front().mMoveCtor == 0);
-			VERIFY(list1.size() == 1);
-			VERIFY(list1.validate());
-		}
-	#endif
 	}
 
 	// iterator erase(const_iterator position);
 	// iterator erase(const_iterator first, const_iterator last);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3,4,5,6,7};
 
 		auto p = list1.begin();
@@ -629,13 +537,11 @@ int TestSList()
 		VERIFY(list1 == slist<int>({}));
 		VERIFY(list1.size() == 0);
 		VERIFY(list1.empty());
-	#endif
 	}
 
 	// iterator erase_after(const_iterator position);
 	// iterator erase_after(const_iterator before_first, const_iterator last);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3,4,5,6,7};
 		auto p = list1.begin();
 
@@ -654,7 +560,6 @@ int TestSList()
 		list1.erase_after(p, list1.end());
 		VERIFY(list1 == slist<int>({0}));
 		VERIFY(list1.validate());
-	#endif
 	}
 
 	// void clear();
@@ -673,10 +578,21 @@ int TestSList()
 
 	// void reset_lose_memory();    
 	{
-		slist<int> list1;
-		list1.resize(100, 42);
+		typedef eastl::slist<int, fixed_allocator> SIntList;
+		typedef SIntList::node_type                SIntListNode;
+		const size_t  kBufferCount = 100;
+		SIntListNode  buffer1[kBufferCount];
+		SIntList      list1;
+		const size_t  kAlignOfSIntListNode = EA_ALIGN_OF(SIntListNode);
+		list1.get_allocator().init(buffer1, sizeof(buffer1), sizeof(SIntListNode), kAlignOfSIntListNode);
+
+		VERIFY(list1.empty());
+		VERIFY(list1.size() == 0);
+		VERIFY(list1.validate());
+
+		list1.resize(kBufferCount, 42);
 		VERIFY(!list1.empty());
-		VERIFY(list1.size() == 100);
+		VERIFY(list1.size() == kBufferCount);
 		VERIFY(list1.validate());
 
 		list1.reset_lose_memory();
@@ -687,7 +603,6 @@ int TestSList()
 
 	// void remove(const value_type& value);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3,4};
 		slist<int> list2 = {0,1,3,4};
 
@@ -696,7 +611,6 @@ int TestSList()
 		VERIFY(list1 == list2);
 		VERIFY(list1.validate());
 		VERIFY(list2.validate());
-	#endif
 	}
 
 	// void remove_if(Predicate predicate);
@@ -717,21 +631,18 @@ int TestSList()
 
 	// void reverse() EA_NOEXCEPT;
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3,4};
 		slist<int> list2 = {4,3,2,1,0};
 		VERIFY(list1 != list2);
 
 		list1.reverse();
 		VERIFY(list1 == list2);
-	#endif
 	}
 
 	// void splice(const_iterator position, this_type& x);
 	// void splice(const_iterator position, this_type& x, const_iterator i);
 	// void splice(const_iterator position, this_type& x, const_iterator first, const_iterator last);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> valid = {0,1,2,3,4,5,6,7};	
 		{
 			slist<int> list1 = {0,1,2,3};
@@ -764,14 +675,12 @@ int TestSList()
 			VERIFY(list1.validate());
 			VERIFY(list2.validate());
 		}
-	#endif
 	}
 
 	// void splice(const_iterator position, this_type&& x);
 	// void splice(const_iterator position, this_type&& x, const_iterator i);
 	// void splice(const_iterator position, this_type&& x, const_iterator first, const_iterator last);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED && !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		{
 			slist<int> list1 = {0,1,2,3};
 			slist<int> list2 = {4,5,6,7};	
@@ -798,14 +707,12 @@ int TestSList()
 			list1.splice(list1.begin(), eastl::move(list2), b, e);
 			VERIFY(list1 == slist<int>({4,5,0,1,2,3}));
 		}
-	#endif
 	}
 
 	// void splice_after(const_iterator position, this_type& x);
 	// void splice_after(const_iterator position, this_type& x, const_iterator i);
 	// void splice_after(const_iterator position, this_type& x, const_iterator first, const_iterator last);
 	{
-	#if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0,1,2,3};	
 		slist<int> list2 = {4,5,6,7};	
 
@@ -813,14 +720,12 @@ int TestSList()
 		VERIFY(list1 == slist<int>({0,4,5,6,7,1,2,3}));
 		VERIFY(list1.validate());
 		VERIFY(list2.validate());
-	#endif
 	}
 
 	// void splice_after(const_iterator position, this_type&& x);
 	// void splice_after(const_iterator position, this_type&& x, const_iterator i);
 	// void splice_after(const_iterator position, this_type&& x, const_iterator first, const_iterator last);
 	{
-	#if EASTL_MOVE_SEMANTICS_ENABLED && !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		{
 			slist<int> list1 = {0,1,2,3};
 			slist<int> list2 = {4,5,6,7};	
@@ -847,12 +752,42 @@ int TestSList()
 			list1.splice_after(list1.begin(), eastl::move(list2), b, e);
 			VERIFY(list1 == slist<int>({0,5,6,1,2,3}));
 		}
-	#endif
+	}
+
+	// size_type unique();
+	{
+		slist<int> ref = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+		slist<int> a = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 3, 3, 3,
+							  4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 7, 8, 9, 9, 9, 9, 9, 9, 9, 9 };
+		VERIFY(a.unique() == 34);
+		VERIFY(a == ref);
+	}
+
+	// size_type unique(BinaryPredicate);
+	{
+		static bool bBreakComparison;
+		struct A
+		{
+			int mValue;
+			bool operator==(const A& other) const { return bBreakComparison ? false : mValue == other.mValue; }
+		};
+
+		slist<A> ref = { {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9} };
+		slist<A> a = { {0}, {0}, {0}, {0}, {0}, {0}, {1}, {2}, {2}, {2}, {2}, {3}, {4}, {5},
+							{5}, {5}, {5}, {5}, {6}, {7}, {7}, {7}, {7}, {8}, {9}, {9}, {9} };
+
+		bBreakComparison = true;
+		VERIFY(a.unique() == 0); // noop because broken comparison operator
+		VERIFY(a != ref);
+
+		VERIFY(a.unique([](const A& lhs, const A& rhs) { return lhs.mValue == rhs.mValue; }) == 17);
+
+		bBreakComparison = false;
+		VERIFY(a == ref);
 	}
 
 	// void sort();
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		slist<int> list1 = {0, 1, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 9, 8, 7, 6, 5, 4, 3, 2, 2, 2, 1, 0};
 		VERIFY(!eastl::is_sorted(eastl::begin(list1), eastl::end(list1)));
 		VERIFY(list1.validate());
@@ -861,20 +796,161 @@ int TestSList()
 
 		VERIFY(eastl::is_sorted(eastl::begin(list1), eastl::end(list1)));
 		VERIFY(list1.validate());
-	#endif
 	}
 
 	// template <class Compare>
 	// void sort(Compare compare);
 	{
-    #if !defined(EA_COMPILER_NO_INITIALIZER_LISTS)
 		auto compare = [](int a, int b) { return a > b;};
 
 		slist<int> list1 = {0, 1, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 9, 8, 7, 6, 5, 4, 3, 2, 2, 2, 1, 0};
 		VERIFY(!eastl::is_sorted(eastl::begin(list1), eastl::end(list1), compare));
 		list1.sort(compare);
 		VERIFY(eastl::is_sorted(eastl::begin(list1), eastl::end(list1), compare));
-	#endif
+	}
+
+	{ // Test empty base-class optimization
+		struct UnemptyDummyAllocator : eastl::dummy_allocator
+		{
+			int foo;
+		};
+
+		typedef eastl::slist<int, eastl::dummy_allocator> list1;
+		typedef eastl::slist<int, UnemptyDummyAllocator> list2;
+
+		EATEST_VERIFY(sizeof(list1) < sizeof(list2));
+	}
+
+	{ // Test erase / erase_if
+		{
+			slist<int> l = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+			auto numErased = eastl::erase(l, 5);
+			VERIFY((l == slist<int>{0, 1, 2, 3, 4, 6, 7, 8, 9}));
+		    VERIFY(numErased == 1);
+
+			numErased = eastl::erase(l, 7);
+			VERIFY((l == slist<int>{0, 1, 2, 3, 4, 6, 8, 9}));
+		    VERIFY(numErased == 1);
+
+			numErased = eastl::erase(l, 2);
+			VERIFY((l == slist<int>{0, 1, 3, 4, 6, 8, 9}));
+		    VERIFY(numErased == 1);
+
+			numErased = eastl::erase(l, 0);
+			VERIFY((l == slist<int>{1, 3, 4, 6, 8, 9}));
+		    VERIFY(numErased == 1);
+
+			numErased = eastl::erase(l, 4);
+			VERIFY((l == slist<int>{1, 3, 6, 8, 9}));
+		    VERIFY(numErased == 1);
+		}
+
+		{
+			slist<int> l = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+			auto numErased = eastl::erase_if(l, [](auto e) { return e % 2 == 0; });
+			VERIFY((l == slist<int>{1, 3, 5, 7, 9}));
+		    VERIFY(numErased == 5);
+
+			numErased = eastl::erase_if(l, [](auto e) { return e == 5; });
+			VERIFY((l == slist<int>{1, 3, 7, 9}));
+		    VERIFY(numErased == 1);
+
+			numErased = eastl::erase_if(l, [](auto e) { return e % 3 == 0; });
+			VERIFY((l == slist<int>{1, 7}));
+		    VERIFY(numErased == 2);
+		}
+	}
+
+	{ // Test global operators
+		{
+			slist<int> list1 = {0, 1, 2, 3, 4, 5};
+			slist<int> list2 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+			slist<int> list3 = {5, 6, 7, 8};
+
+			VERIFY(list1 == list1);
+			VERIFY(!(list1 != list1));
+
+			VERIFY(list1 != list2);
+			VERIFY(list2 != list3);
+			VERIFY(list1 != list3);
+
+			VERIFY(list1 < list2);
+			VERIFY(list1 <= list2);
+
+			VERIFY(list2 > list1);
+			VERIFY(list2 >= list1);
+
+			VERIFY(list3 > list1);
+			VERIFY(list3 > list2);
+		}
+
+#if defined(EA_COMPILER_HAS_THREE_WAY_COMPARISON)
+		{
+			slist<int> list1 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+			slist<int> list2 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+			slist<int> list3 = {-1, 0, 1, 2, 3, 4, 5};
+
+			// Verify equality between list1 and list2
+			VERIFY((list1 <=> list2) == 0);
+			VERIFY(!((list1 <=> list2) != 0));
+			VERIFY((list1 <=> list2) <= 0);
+			VERIFY((list1 <=> list2) >= 0);
+			VERIFY(!((list1 <=> list2) < 0));
+			VERIFY(!((list1 <=> list2) > 0));
+
+			list1.push_front(-2); // Make list1 less than list2.
+			list2.push_front(-1);
+
+			// Verify list1 < list2
+			VERIFY(!((list1 <=> list2) == 0));
+			VERIFY((list1 <=> list2) != 0);
+			VERIFY((list1 <=> list2) <= 0);
+			VERIFY(!((list1 <=> list2) >= 0));
+			VERIFY(((list1 <=> list2) < 0));
+			VERIFY(!((list1 <=> list2) > 0));
+
+
+			// Verify list3.size() < list2.size() and list3 is a subset of list2
+			VERIFY(!((list3 <=> list2) == 0));
+			VERIFY((list3 <=> list2) != 0);
+			VERIFY((list3 <=> list2) <= 0);
+			VERIFY(!((list3 <=> list2) >= 0));
+			VERIFY(((list3 <=> list2) < 0));
+			VERIFY(!((list3 <=> list2) > 0));
+		}
+
+		{
+			slist<int> list1 = {1, 2, 3, 4, 5, 6, 7};
+			slist<int> list2 = {7, 6, 5, 4, 3, 2, 1};
+			slist<int> list3 = {1, 2, 3, 4};
+
+			struct weak_ordering_slist
+			{
+				slist<int> slist;
+				inline std::weak_ordering operator<=>(const weak_ordering_slist& b) const { return slist <=> b.slist; }
+			};
+
+			VERIFY(synth_three_way{}(weak_ordering_slist{list1}, weak_ordering_slist{list2}) == std::weak_ordering::less);
+			VERIFY(synth_three_way{}(weak_ordering_slist{list3}, weak_ordering_slist{list1}) == std::weak_ordering::less);
+			VERIFY(synth_three_way{}(weak_ordering_slist{list2}, weak_ordering_slist{list1}) == std::weak_ordering::greater);
+			VERIFY(synth_three_way{}(weak_ordering_slist{list2}, weak_ordering_slist{list3}) == std::weak_ordering::greater);
+			VERIFY(synth_three_way{}(weak_ordering_slist{list1}, weak_ordering_slist{list1}) == std::weak_ordering::equivalent);
+
+			struct strong_ordering_slist
+			{
+				slist<int> slist;
+				inline std::strong_ordering operator<=>(const strong_ordering_slist& b) const { return slist <=> b.slist; }
+			};
+
+			VERIFY(synth_three_way{}(strong_ordering_slist{list1}, strong_ordering_slist{list2}) == std::strong_ordering::less);
+			VERIFY(synth_three_way{}(strong_ordering_slist{list3}, strong_ordering_slist{list1}) == std::strong_ordering::less);
+			VERIFY(synth_three_way{}(strong_ordering_slist{list2}, strong_ordering_slist{list1}) == std::strong_ordering::greater);
+			VERIFY(synth_three_way{}(strong_ordering_slist{list2}, strong_ordering_slist{list3}) == std::strong_ordering::greater);
+			VERIFY(synth_three_way{}(strong_ordering_slist{list1}, strong_ordering_slist{list1}) == std::strong_ordering::equal);
+		}
+#endif
 	}
 
 	return nErrorCount;

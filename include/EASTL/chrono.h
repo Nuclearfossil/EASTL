@@ -27,21 +27,30 @@
 
 // TODO:  move to platform specific cpp or header file
 #if  defined EA_PLATFORM_MICROSOFT
-	#pragma warning(push, 0)
-	#ifndef WIN32_LEAN_AND_MEAN
-	#define WIN32_LEAN_AND_MEAN
-	#endif
 	EA_DISABLE_ALL_VC_WARNINGS()
+
+	#ifndef WIN32_LEAN_AND_MEAN
+		#define WIN32_LEAN_AND_MEAN
+	#endif
+
 	#undef NOMINMAX
 	#define NOMINMAX
+
 	#include <Windows.h>
+
+	#ifdef min
+		#undef min
+	#endif
+	#ifdef max
+		#undef max
+	#endif
+
 	EA_RESTORE_ALL_VC_WARNINGS()
-	#pragma warning(pop)
 #endif
 
 #if defined(EA_PLATFORM_MICROSOFT) && !defined(EA_PLATFORM_MINGW)
-	#include <thr/xtimec.h>
-#elif defined(EA_PLATFORM_PS4)
+	// Nothing to do
+#elif defined(EA_PLATFORM_SONY)
 	#include <Dinkum/threads/xtimec.h>
 	#include <kernel.h>
 #elif defined(EA_PLATFORM_APPLE)
@@ -212,7 +221,7 @@ namespace chrono
 		typedef Period period;
 		typedef duration<Rep, Period> this_type;
 
-    #if defined(EA_COMPILER_NO_DEFAULTED_FUNCTIONS) || defined(EA_PLATFORM_PS4)
+    #if defined(EA_COMPILER_NO_DEFAULTED_FUNCTIONS)
 		EA_CONSTEXPR duration() 
 			: mRep() {}
 
@@ -220,7 +229,7 @@ namespace chrono
 			: mRep(Rep(other.mRep)) {}
 
 		duration& operator=(const duration& other)
-			{ mRep = other.mRep; }
+			{ mRep = other.mRep; return *this; }
 	#else
 		EA_CONSTEXPR duration() = default;
 		duration(const duration&) = default;
@@ -305,7 +314,7 @@ namespace chrono
 	duration<typename eastl::common_type<Rep1, Rep2>::type, Period1> EASTL_FORCE_INLINE
 	operator*(const duration<Rep1, Period1>& lhs, const Rep2& rhs)
 	{
-		typedef typename duration<eastl::common_type<Rep1, Rep2>, Period1>::type common_duration_t;
+		typedef duration<typename eastl::common_type<Rep1, Rep2>::type, Period1> common_duration_t;
 		return common_duration_t(common_duration_t(lhs).count() * rhs);
 	}
 
@@ -538,12 +547,12 @@ namespace chrono
 	{
 		#if defined(EA_PLATFORM_MICROSOFT) && !defined(EA_PLATFORM_MINGW)
 			#define EASTL_NS_PER_TICK 1 
-		#elif defined EA_PLATFORM_PS4
-			#define EASTL_NS_PER_TICK _XTIME_NSECS_PER_TICK
+		#elif defined EA_PLATFORM_SONY
+			#define EASTL_NS_PER_TICK 1
 		#elif defined EA_PLATFORM_POSIX
 			#define EASTL_NS_PER_TICK _XTIME_NSECS_PER_TICK
 		#else
-			#define EASTL_NS_PER_TICK 100 
+			#define EASTL_NS_PER_TICK 100
 		#endif
 
 		#if defined(EA_PLATFORM_POSIX) 
@@ -565,7 +574,7 @@ namespace chrono
 			{
 				LARGE_INTEGER frequency;
 				QueryPerformanceFrequency(&frequency);
-				return double(1000000000.0L / frequency.QuadPart);  // nanoseconds per tick
+				return double(1000000000.0L / (long double)frequency.QuadPart);  // nanoseconds per tick
 			};
 
 			auto queryCounter = []
@@ -578,17 +587,42 @@ namespace chrono
 			EA_DISABLE_VC_WARNING(4640)  // warning C4640: construction of local static object is not thread-safe (VS2013)
 			static auto frequency = queryFrequency(); // cache cpu frequency on first call
 			EA_RESTORE_VC_WARNING()
-			return uint64_t(frequency * queryCounter());
-        #elif defined EA_PLATFORM_PS4
-			return sceKernelGetProcessTimeCounter();
+			return uint64_t(frequency * (double)queryCounter());
+		#elif defined EA_PLATFORM_SONY
+			auto queryFrequency = []
+			{
+				// nanoseconds/seconds / ticks/seconds
+				return double(1000000000.0L / (long double)sceKernelGetProcessTimeCounterFrequency());  // nanoseconds per tick
+			};
+
+			auto queryCounter = []
+			{
+				return sceKernelGetProcessTimeCounter();
+			};
+
+			EA_DISABLE_VC_WARNING(4640)  // warning C4640: construction of local static object is not thread-safe (VS2013)
+			static auto frequency = queryFrequency(); // cache cpu frequency on first call
+			EA_RESTORE_VC_WARNING()
+			return uint64_t(frequency * (double)queryCounter());
 		#elif defined(EA_PLATFORM_APPLE)
-		   return mach_absolute_time();
+			auto queryTimeInfo = []
+			{
+				mach_timebase_info_data_t info;
+				mach_timebase_info(&info);
+				return info;
+			};
+			
+			static auto timeInfo = queryTimeInfo();
+			uint64_t t = mach_absolute_time();
+			t *= timeInfo.numer;
+			t /= timeInfo.denom;
+			return t;
 		#elif defined(EA_PLATFORM_POSIX) // Posix means Linux, Unix, and Macintosh OSX, among others (including Linux-based mobile platforms).
 			#if (defined(CLOCK_REALTIME) || defined(CLOCK_MONOTONIC))
 				timespec ts;
 				int result = clock_gettime(CLOCK_MONOTONIC, &ts);
 
-				if (result == EINVAL)
+				if (result == -1 && errno == EINVAL)
 					result = clock_gettime(CLOCK_REALTIME, &ts);
 
 				const uint64_t nNanoseconds = (uint64_t)ts.tv_nsec + ((uint64_t)ts.tv_sec * UINT64_C(1000000000));
@@ -670,7 +704,7 @@ namespace chrono
     };
 
 
-    ///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
 	// time_point common_type specialization 
 	///////////////////////////////////////////////////////////////////////////////
 	template <typename Clock, typename Duration1, typename Duration2>
@@ -680,45 +714,52 @@ namespace chrono
 	};
 
 
-    ///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
 	// chrono_literals  
 	///////////////////////////////////////////////////////////////////////////////
-#if EASTL_USER_LITERALS_ENABLED && EASTL_INLINE_NAMESPACES_ENABLED
-	EA_DISABLE_VC_WARNING(4455) // disable warning C4455: literal suffix identifiers that do not start with an underscore are reserved
-    inline namespace literals
-    {
-	    inline namespace chrono_literals
-	    {
-			///////////////////////////////////////////////////////////////////////////////
-			// integer chrono literals
-			///////////////////////////////////////////////////////////////////////////////
-		    EA_CONSTEXPR chrono::hours operator"" h(unsigned long long h) { return chrono::hours(h); }
-		    EA_CONSTEXPR chrono::minutes operator"" min(unsigned long long m) { return chrono::minutes(m); }
-		    EA_CONSTEXPR chrono::seconds operator"" s(unsigned long long s) { return chrono::seconds(s); }
-		    EA_CONSTEXPR chrono::milliseconds operator"" ms(unsigned long long ms) { return chrono::milliseconds(ms); }
-		    EA_CONSTEXPR chrono::microseconds operator"" us(unsigned long long us) { return chrono::microseconds(us); }
-		    EA_CONSTEXPR chrono::nanoseconds operator"" ns(unsigned long long ns) { return chrono::nanoseconds(ns); }
+	#if EASTL_USER_LITERALS_ENABLED && EASTL_INLINE_NAMESPACES_ENABLED
+		// Disabling the Clang/GCC/MSVC warning about using user
+		// defined literals without a leading '_' as they are reserved
+		// for standard libary usage.
+		EA_DISABLE_VC_WARNING(4455)
+		EA_DISABLE_CLANG_WARNING(-Wuser-defined-literals)
+		EA_DISABLE_GCC_WARNING(-Wliteral-suffix)
+		inline namespace literals
+		{
+			inline namespace chrono_literals
+			{
+				///////////////////////////////////////////////////////////////////////////////
+				// integer chrono literals
+				///////////////////////////////////////////////////////////////////////////////
+				EA_CONSTEXPR chrono::hours operator"" h(unsigned long long h) { return chrono::hours(h); }
+				EA_CONSTEXPR chrono::minutes operator"" min(unsigned long long m) { return chrono::minutes(m); }
+				EA_CONSTEXPR chrono::seconds operator"" s(unsigned long long s) { return chrono::seconds(s); }
+				EA_CONSTEXPR chrono::milliseconds operator"" ms(unsigned long long ms) { return chrono::milliseconds(ms); }
+				EA_CONSTEXPR chrono::microseconds operator"" us(unsigned long long us) { return chrono::microseconds(us); }
+				EA_CONSTEXPR chrono::nanoseconds operator"" ns(unsigned long long ns) { return chrono::nanoseconds(ns); }
 
-			///////////////////////////////////////////////////////////////////////////////
-			// float chrono literals
-			///////////////////////////////////////////////////////////////////////////////
-		    EA_CONSTEXPR chrono::duration<long double, ratio<3600, 1>> operator"" h(long double h)
-				{ return chrono::duration<long double, ratio<3600, 1>>(h); }
-		    EA_CONSTEXPR chrono::duration<long double, ratio<60, 1>> operator"" min(long double m)
-				{ return chrono::duration<long double, ratio<60, 1>>(m); }
-		    EA_CONSTEXPR chrono::duration<long double> operator"" s(long double s)
-				{ return chrono::duration<long double>(s); }
-		    EA_CONSTEXPR chrono::duration<float, milli> operator"" ms(long double ms)
-				{ return chrono::duration<long double, milli>(ms); }
-		    EA_CONSTEXPR chrono::duration<float, micro> operator"" us(long double us)
-				{ return chrono::duration<long double, micro>(us); }
-		    EA_CONSTEXPR chrono::duration<float, nano> operator"" ns(long double ns)
-				{ return chrono::duration<long double, nano>(ns); }
+				///////////////////////////////////////////////////////////////////////////////
+				// float chrono literals
+				///////////////////////////////////////////////////////////////////////////////
+				EA_CONSTEXPR chrono::duration<long double, ratio<3600, 1>> operator"" h(long double h)
+					{ return chrono::duration<long double, ratio<3600, 1>>(h); }
+				EA_CONSTEXPR chrono::duration<long double, ratio<60, 1>> operator"" min(long double m)
+					{ return chrono::duration<long double, ratio<60, 1>>(m); }
+				EA_CONSTEXPR chrono::duration<long double> operator"" s(long double s)
+					{ return chrono::duration<long double>(s); }
+				EA_CONSTEXPR chrono::duration<float, milli> operator"" ms(long double ms)
+					{ return chrono::duration<long double, milli>(ms); }
+				EA_CONSTEXPR chrono::duration<float, micro> operator"" us(long double us)
+					{ return chrono::duration<long double, micro>(us); }
+				EA_CONSTEXPR chrono::duration<float, nano> operator"" ns(long double ns)
+					{ return chrono::duration<long double, nano>(ns); }
 
-	    } // namespace chrono_literals
-    }// namespace literals
-	EA_RESTORE_VC_WARNING() // warning: 4455
-#endif
+			} // namespace chrono_literals
+		}// namespace literals
+		EA_RESTORE_GCC_WARNING()	// -Wliteral-suffix
+		EA_RESTORE_CLANG_WARNING()	// -Wuser-defined-literals
+		EA_RESTORE_VC_WARNING()		// warning: 4455
+	#endif
 
 } // namespace eastl
 
@@ -726,7 +767,7 @@ namespace chrono
 #if EASTL_USER_LITERALS_ENABLED && EASTL_INLINE_NAMESPACES_ENABLED
 namespace chrono
 {
-	using namespace literals::chrono_literals;
+	using namespace eastl::literals::chrono_literals;
 } // namespace chrono
 #endif
 

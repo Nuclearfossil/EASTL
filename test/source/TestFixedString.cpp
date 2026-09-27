@@ -47,55 +47,6 @@ template class eastl::fixed_substring<char8_t>;
 template class eastl::fixed_substring<char16_t>;
 
 
-/*
-namespace Test
-{
-	namespace Allocator
-	{
-		struct ITestAllocator
-		{
-			virtual void* Alloc(size_t size, const char* name, unsigned int flags) = 0;
-			virtual void  Free(void* block, size_t size = 0) = 0;
-		};
-	}
-
-	class TestAllocator
-	{
-	public:
-		typedef Allocator::ITestAllocator  allocator_type;
-		typedef TestAllocator              this_type;
-
-	public:
-		TestAllocator(const char* = NULL) : mpTestAllocator(NULL) {}
-		TestAllocator(const char*, allocator_type* pTestAllocator) : mpTestAllocator(pTestAllocator) {}
-		TestAllocator(const char*, allocator_type* pTestAllocator, int) : mpTestAllocator(pTestAllocator) {}
-		TestAllocator(const TestAllocator& x) : mpTestAllocator(x.mpTestAllocator) {}
-		TestAllocator(const TestAllocator& x, const char*) : mpTestAllocator(x.mpTestAllocator) {}
-
-		TestAllocator& operator=(const TestAllocator& x) { mpTestAllocator = x.mpTestAllocator; }
-
-		void* allocate(size_t n, int = 0) { return malloc(n); }
-		void* allocate(size_t n, size_t, size_t, int = 0)  { return malloc(n); } // This is broken, but we don't actually use it so it doesn't matter.
-		void  deallocate(void* p, size_t) { free(p); }
-
-		allocator_type* get_allocator() const { return mpTestAllocator; }
-		void            set_allocator(allocator_type* pAllocator) { mpTestAllocator = pAllocator; }
-
-		int  get_flags() const { return 0; }
-		void set_flags(int) {}
-
-		const char* get_name() const { return ""; }
-		void        set_name(const char*) {}
-
-	public: // Public because otherwise VC++ generates (possibly invalid) warnings about inline friend template specializations.
-		allocator_type* mpTestAllocator;
-	};
-
-	bool operator==(const TestAllocator& a, const TestAllocator& b) { return a.mpTestAllocator == b.mpTestAllocator; }
-	bool operator!=(const TestAllocator& a, const TestAllocator& b) { return a.mpTestAllocator != b.mpTestAllocator; }
-}
-*/
-
 
 
 /*
@@ -107,25 +58,11 @@ struct StructWithContainerOfStructs
 {
 	eastl::fixed_string<StructWithContainerOfStructs,4> children;
 };
-
-	
-#if EASTL_ABSTRACT_STRING_ENABLED
-// This does not compile, since the fixed_string_abstract allocator (among other things) is
-// templated on sizeof(T), not just T. Thus, the full type is required at the time 
-// of instantiation, but it is not available.
-// See EATech Core JIRA issue ETCR-1608 for more information.
-struct StructWithContainerOfStructsAbstract
-{
-	eastl::fixed_string_abstract<StructWithContainerOfStructsAbstract> children;
-};
-#endif
 */
 
 
 int TestFixedSubstring()
 {
-	EASTLTest_Printf("TestFixedSubstring\n");
-
 	int nErrorCount = 0;
 
 	{
@@ -194,20 +131,70 @@ int TestFixedSubstring()
 		EATEST_VERIFY(str == "");
 	}
 
+
+	{
+		// Check that copies/moves don't become independent strings.
+		// They should all point to the same sub-string.
+		string str = "hello world";
+		fixed_substring<char> sub(str, 2, 5);
+
+		EATEST_VERIFY(sub.size() == 5);
+		EATEST_VERIFY(sub[0] == 'l');
+		EATEST_VERIFY(sub == "llo w");
+
+		vector<fixed_substring<char>> v;
+		for (eastl_size_t i = 0; i < 1000; ++i) {
+			v.push_back(sub);
+		}
+
+		sub[0] = 'g';
+		EATEST_VERIFY(str == "heglo world");
+		EATEST_VERIFY(sub == "glo w");
+
+		for (const auto& s : v){
+			EATEST_VERIFY(s == "glo w");
+		}
+
+		// copy construct
+		fixed_substring<char> sub2 = sub;
+
+		// copy assign
+		fixed_substring<char> sub3;
+		sub3 = sub;
+
+		// move construct
+		fixed_substring<char> sub4 = eastl::move(sub);
+
+		// move assign
+		fixed_substring<char> sub_again(str, 2, 5);
+		fixed_substring<char> sub5;
+		sub5 = eastl::move(sub_again);
+
+		EATEST_VERIFY(sub2 == "glo w");
+		EATEST_VERIFY(sub3 == "glo w");
+		EATEST_VERIFY(sub4 == "glo w");
+		EATEST_VERIFY(sub5 == "glo w");
+
+		str[5] = 'g';
+		EATEST_VERIFY(sub2 == "glogw");
+		EATEST_VERIFY(sub3 == "glogw");
+		EATEST_VERIFY(sub4 == "glogw");
+		EATEST_VERIFY(sub5 == "glogw");
+
+	}
+
 	return nErrorCount;
 }
 
 
 int TestFixedString()
 {
-	EASTLTest_Printf("TestFixedString\n");
-
 	int nErrorCount = 0;
 
 	{
-		fixed_string<char8_t, 64>::CtorSprintf cs;
+		fixed_string<char, 64>::CtorSprintf cs;
 
-		fixed_string<char8_t, 64> s8(cs, "hello world %d.", 1);
+		fixed_string<char, 64> s8(cs, "hello world %d.", 1);
 		EATEST_VERIFY(s8 == "hello world 1.");
 		EATEST_VERIFY(s8.capacity() == 63); // 63 because the 64 includes the terminating 0, but capacity() subtracts the terminating 0 usage.
 		EATEST_VERIFY(s8.max_size() == 63);
@@ -228,6 +215,50 @@ int TestFixedString()
 		sW.append_sprintf(L" More hello %d.", 2);
 		EATEST_VERIFY(sW == L"hello world 1. More hello 2.");
 		EATEST_VERIFY(sW.capacity() == 63); // 63 because the 64 includes the terminating 0, but capacity() subtracts the terminating 0 usage.
+	}
+
+	{
+		string s("frost");
+		size_t sHash = eastl::hash<string>{}(s);
+
+		// char
+		fixed_string<char, 64> fsc1("frost");
+		fixed_string<char, 64> fsc2("bite");
+		fixed_string<char, 64> fsc3("bite");
+
+		size_t fsc1Hash = eastl::hash<fixed_string<char, 64>>{}(fsc1);
+		size_t fsc2Hash = eastl::hash<fixed_string<char, 64>>{}(fsc2);
+		size_t fsc3Hash = eastl::hash<fixed_string<char, 64>>{}(fsc3);
+
+		EATEST_VERIFY(fsc1Hash == sHash);
+		EATEST_VERIFY(fsc1Hash != fsc2Hash);
+		EATEST_VERIFY(fsc2Hash == fsc3Hash);
+
+		// wchar_t
+		fixed_string<wchar_t, 64> fswc1(L"frost");
+		fixed_string<wchar_t, 64> fswc2(L"bite");
+		fixed_string<wchar_t, 64> fswc3(L"bite");
+
+		size_t fswc1Hash = eastl::hash<fixed_string<wchar_t, 64>>{}(fswc1);
+		size_t fswc2Hash = eastl::hash<fixed_string<wchar_t, 64>>{}(fswc2);
+		size_t fswc3Hash = eastl::hash<fixed_string<wchar_t, 64>>{}(fswc3);
+
+		EATEST_VERIFY(fswc1Hash == sHash);
+		EATEST_VERIFY(fswc1Hash != fswc2Hash);
+		EATEST_VERIFY(fswc2Hash == fswc3Hash);
+
+		// char8_t
+		fixed_string<char8_t, 64> fsc81("frost");
+		fixed_string<char8_t, 64> fsc82("bite");
+		fixed_string<char8_t, 64> fsc83("bite");
+
+		size_t fsc81Hash = eastl::hash<fixed_string<char8_t, 64>>{}(fsc81);
+		size_t fsc82Hash = eastl::hash<fixed_string<char8_t, 64>>{}(fsc82);
+		size_t fsc83Hash = eastl::hash<fixed_string<char8_t, 64>>{}(fsc83);
+
+		EATEST_VERIFY(fsc81Hash == sHash);
+		EATEST_VERIFY(fsc81Hash != fsc82Hash);
+		EATEST_VERIFY(fsc82Hash == fsc83Hash);
 	}
 
 
@@ -256,41 +287,41 @@ int TestFixedString()
 		EATEST_VERIFY(fs2.size() == 0);
 		EATEST_VERIFY(fs2.capacity() == 63);
 
-		fs1 = "abc";
+		fs1 = EA_CHAR8("abc");
 		FixedString64 fs3(fs1);
 		EATEST_VERIFY(fs3.size() == 3);
 		EATEST_VERIFY(fs3.capacity() == 63);
-		EATEST_VERIFY(fs3 == "abc");
+		EATEST_VERIFY(fs3 == EA_CHAR8("abc"));
 
 		// fixed_string(const this_type& x, size_type position, size_type n = npos);
 		FixedString64 fs4(fs1, 1, 2);
 		EATEST_VERIFY(fs4.size() == 2);
 		EATEST_VERIFY(fs4.capacity() == 63);
-		EATEST_VERIFY(fs4 == "bc");
+		EATEST_VERIFY(fs4 == EA_CHAR8("bc"));
 
 		// fixed_string(const value_type* p, size_type n);
-		FixedString64 fs5("abcdef", 6);
+		FixedString64 fs5(EA_CHAR8("abcdef"), 6);
 		EATEST_VERIFY(fs5.size() == 6);
 		EATEST_VERIFY(fs5.capacity() == 63);
-		EATEST_VERIFY(fs5 == "abcdef");
+		EATEST_VERIFY(fs5 == EA_CHAR8("abcdef"));
 
 		// fixed_string(const value_type* p);
-		FixedString64 fs6("abcdef");
+		FixedString64 fs6(EA_CHAR8("abcdef"));
 		EATEST_VERIFY(fs6.size() == 6);
 		EATEST_VERIFY(fs6.capacity() == 63);
-		EATEST_VERIFY(fs6 == "abcdef");
+		EATEST_VERIFY(fs6 == EA_CHAR8("abcdef"));
 
 		// fixed_string(size_type n, const value_type& value);
 		FixedString64 fs7(8, 'a');
 		EATEST_VERIFY(fs7.size() == 8);
 		EATEST_VERIFY(fs7.capacity() == 63);
-		EATEST_VERIFY(fs7 == "aaaaaaaa");
+		EATEST_VERIFY(fs7 == EA_CHAR8("aaaaaaaa"));
 
 		// fixed_string(const value_type* pBegin, const value_type* pEnd);
 		FixedString64 fs8(&fs6[0], &fs6[5]);
 		EATEST_VERIFY(fs8.size() == 5);
 		EATEST_VERIFY(fs8.capacity() == 63);
-		EATEST_VERIFY(fs8 == "abcde");
+		EATEST_VERIFY(fs8 == EA_CHAR8("abcde"));
 
 		// fixed_string(CtorDoNotInitialize, size_type n);
 		FixedString64 fs9(cdni, 7);
@@ -298,24 +329,24 @@ int TestFixedString()
 		EATEST_VERIFY(fs9.capacity() == 63);
 
 		// fixed_string(CtorSprintf, const value_type* pFormat, ...);
-		FixedString64 fs10(cs, "%d", 37);
+		FixedString64 fs10(cs, EA_CHAR8("%d"), 37);
 		EATEST_VERIFY(fs10.size() == 2);
 		EATEST_VERIFY(fs10.capacity() == 63);
-		EATEST_VERIFY(fs10 == "37");
+		EATEST_VERIFY(fs10 == EA_CHAR8("37"));
 
 		// this_type& operator=(const const value_type* p);
 		// this_type& operator=(const this_type& x);
-		fs9 = "hello";
-		EATEST_VERIFY(fs9 == "hello");
+		fs9 = EA_CHAR8("hello");
+		EATEST_VERIFY(fs9 == EA_CHAR8("hello"));
 
 		fs9 = fs10;
 		EATEST_VERIFY(fs9 == fs10);
-		EATEST_VERIFY(fs9 == "37");
+		EATEST_VERIFY(fs9 == EA_CHAR8("37"));
 
 		// void swap(this_type& x);
 		swap(fs7, fs9);
-		EATEST_VERIFY(fs7 == "37");
-		EATEST_VERIFY(fs9 == "aaaaaaaa");
+		EATEST_VERIFY(fs7 == EA_CHAR8("37"));
+		EATEST_VERIFY(fs9 == EA_CHAR8("aaaaaaaa"));
 
 		// void set_capacity(size_type n);
 		fs9.set_capacity(100);
@@ -373,7 +404,7 @@ int TestFixedString()
 			// fixed_string operator+(const fixed_string& a, const value_type* p);
 			// fixed_string operator+(const fixed_string& a, value_type c);
 
-			typedef fixed_string<char8_t, 8, true> FSTest; // Make it a small size so it's easily overflowed when we want.
+			typedef fixed_string<char, 8, true> FSTest; // Make it a small size so it's easily overflowed when we want.
 
 			FSTest a("abc");
 			FSTest b("def");
@@ -388,38 +419,36 @@ int TestFixedString()
 			c = 'g' + a;
 			EATEST_VERIFY(c == "gabc");
 
-			#if EASTL_MOVE_SEMANTICS_ENABLED
-				// fixed_string operator+(fixed_string&& a,    fixed_string&& b);
-				// fixed_string operator+(fixed_string&& a,    const fixed_string& b);
-				// fixed_string operator+(const value_type* p, fixed_string&& b);
-				// fixed_string operator+(fixed_string&& a,    const value_type* p);
-				// fixed_string operator+(fixed_string&& a,    value_type b);
+			// fixed_string operator+(fixed_string&& a,    fixed_string&& b);
+			// fixed_string operator+(fixed_string&& a,    const fixed_string& b);
+			// fixed_string operator+(const value_type* p, fixed_string&& b);
+			// fixed_string operator+(fixed_string&& a,    const value_type* p);
+			// fixed_string operator+(fixed_string&& a,    value_type b);
 
-				c = eastl::move(a) + eastl::move(b);
-				EATEST_VERIFY(c == "abcdef");
-				c.clear();
+			c = eastl::move(a) + eastl::move(b);
+			EATEST_VERIFY(c == "abcdef");
+			c.clear();
 
-				FSTest a1("abc");
-				FSTest b1("def");
-				c = eastl::move(a1) + b1;
-				EATEST_VERIFY(c == "abcdef");
-				c.clear();
+			FSTest a1("abc");
+			FSTest b1("def");
+			c = eastl::move(a1) + b1;
+			EATEST_VERIFY(c == "abcdef");
+			c.clear();
 
-				FSTest b2("def");
-				c = "abc" + eastl::move(b2);
-				EATEST_VERIFY(c == "abcdef");
-				c.clear();
+			FSTest b2("def");
+			c = "abc" + eastl::move(b2);
+			EATEST_VERIFY(c == "abcdef");
+			c.clear();
 
-				FSTest a3("abc");
-				c = eastl::move(a3) + "def";
-				EATEST_VERIFY(c == "abcdef");
-				c.clear();
+			FSTest a3("abc");
+			c = eastl::move(a3) + "def";
+			EATEST_VERIFY(c == "abcdef");
+			c.clear();
 
-				FSTest a4("abc");
-				c = eastl::move(a4) + 'd';
-				EATEST_VERIFY(c == "abcd");
-				c.clear();
-			#endif
+			FSTest a4("abc");
+			c = eastl::move(a4) + 'd';
+			EATEST_VERIFY(c == "abcd");
+			c.clear();
 		}
 
 
@@ -473,17 +502,15 @@ int TestFixedString()
 		overflowAllocator.deallocate(p, 1);
 	}
 
-	/*
 	{
 		// Regression for compile failure when EASTL_NO_RVALUE_REFERENCES is 0.
-		typedef eastl::fixed_string<char8_t, 32, true, Test::TestAllocator> TestString;
+		typedef eastl::fixed_string<char, 32, true, MallocAllocator> TestString;
 
 		TestString ts1;
 		TestString ts2(ts1 + "Test");
 
 		EATEST_VERIFY(ts1.empty() && ts2.size() == 4);
 	}
-	*/
 
 	{
 		// Test equality tests of differently-sized fixed_strings.

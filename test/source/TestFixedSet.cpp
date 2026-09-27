@@ -6,22 +6,13 @@
 #include "EASTLTest.h"
 #include "TestSet.h"
 #include <EASTL/fixed_set.h>
+#include "TestAssociativeContainers.h"
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable: 4702) // VC++ STL headers generate this. warning C4702: unreachable code
-	#pragma warning(disable:4350) // for whatever reason, the push,0 above does not turn this warning off with vs2012.
-								  // VC++ 2012 STL headers generate this. warning C4350: behavior change: 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc(const std::_Wrap_alloc<_Alloc> &) throw()' called instead of 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc<std::_Wrap_alloc<_Alloc>>(_Other &) throw()'
-#endif
-
+EA_DISABLE_ALL_VC_WARNINGS()
 #ifndef EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 	#include <set>
 #endif
-
-#if defined(_MSC_VER)
-	#pragma warning(pop)
-#endif
-
+EA_RESTORE_ALL_VC_WARNINGS()
 
 using namespace eastl;
 
@@ -63,26 +54,28 @@ typedef eastl::fixed_multiset<TestObject, kContainerSize> VMS4;
 EA_DISABLE_VC_WARNING(6262)
 int TestFixedSet()
 {
-	EASTLTest_Printf("TestFixedSet\n");
-
 	int nErrorCount = 0;
 
 	#ifndef EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 		{   // Test construction
 			nErrorCount += TestSetConstruction<VS1, VS3, false>();
 			nErrorCount += TestSetConstruction<VS4, VS6, false>();
+			nErrorCount += TestSetConstruction<eastl::fixed_set<int, kContainerSize, true, eastl::less<void>>, std::set<int, std::less<void>>, false>();
 
 			nErrorCount += TestSetConstruction<VMS1, VMS3, true>();
 			nErrorCount += TestSetConstruction<VMS4, VMS6, true>();
+			nErrorCount += TestSetConstruction<eastl::fixed_multiset<int, kContainerSize, true, eastl::less<void>>, std::multiset<int, std::less<void>>, true>();
 		}
 
 
 		{   // Test mutating functionality.
 			nErrorCount += TestSetMutation<VS1, VS3, false>();
 			nErrorCount += TestSetMutation<VS4, VS6, false>();
+			nErrorCount += TestSetMutation<eastl::fixed_set<int, kContainerSize, true, eastl::less<void>>, std::set<int, std::less<void>>, false>();
 
 			nErrorCount += TestSetMutation<VMS1, VMS3, true>();
 			nErrorCount += TestSetMutation<VMS4, VMS6, true>();
+			nErrorCount += TestSetMutation<eastl::fixed_multiset<int, kContainerSize, true, eastl::less<void>>, std::multiset<int, std::less<void>>, true>();
 		}
 	#endif // EA_COMPILER_NO_STANDARD_CPP_LIBRARY
 
@@ -90,17 +83,21 @@ int TestFixedSet()
 	{   // Test searching functionality.
 		nErrorCount += TestSetSearch<VS1, false>();
 		nErrorCount += TestSetSearch<VS4, false>();
+		nErrorCount += TestSetSearch<eastl::fixed_set<int, kContainerSize, true, eastl::less<void>>, false>();
 
 		nErrorCount += TestSetSearch<VMS1, true>();
 		nErrorCount += TestSetSearch<VMS4, true>();
+		nErrorCount += TestSetSearch<eastl::fixed_multiset<int, kContainerSize, true, eastl::less<void>>, true>();
 	}
 
 
 	{
 		// C++11 emplace and related functionality
 		nErrorCount += TestSetCpp11<eastl::fixed_set<TestObject, 32> >();
+		nErrorCount += TestSetCpp11<eastl::fixed_set<TestObject, 32, true, eastl::less<void>>>();
 
 		nErrorCount += TestMultisetCpp11<eastl::fixed_multiset<TestObject, 32> >();
+		nErrorCount += TestMultisetCpp11<eastl::fixed_multiset<TestObject, 32, true, eastl::less<void>>>();
 	}
 
 
@@ -202,6 +199,22 @@ int TestFixedSet()
 			EATEST_VERIFY((uint64_t)ptr % EASTL_ALIGN_OF(Align64) == 0);
 		}
 	}
+
+	{ // heterogenous functions - fixed_set
+		fixed_set<ExplicitString, 1, true, eastl::less<void>> s{ ExplicitString::Create("found") };
+		nErrorCount += TestAssociativeContainerHeterogeneousLookup(s);
+		nErrorCount += TestOrderedAssociativeContainerHeterogeneousLookup(s);
+		nErrorCount += TestSetHeterogeneousInsertion<decltype(s)>();
+		nErrorCount += TestAssociativeContainerHeterogeneousErasure(s);
+	}
+
+	{ // heterogenous functions - fixed_multiset
+		fixed_multiset<ExplicitString, 1, true, eastl::less<void>> s{ ExplicitString::Create("found") };
+		nErrorCount += TestAssociativeContainerHeterogeneousLookup(s);
+		nErrorCount += TestOrderedAssociativeContainerHeterogeneousLookup(s);
+		nErrorCount += TestAssociativeContainerHeterogeneousErasure(s);
+	}
+
 	return nErrorCount;
 }
 EA_RESTORE_VC_WARNING()

@@ -7,6 +7,7 @@
 #include <EASTL/type_traits.h>
 #include <EASTL/vector.h>
 #include <EAStdC/EAAlignment.h>
+#include "ConceptImpls.h"
 
 
 
@@ -86,9 +87,14 @@ union Union
 	int   x;
 	short y;
 };
-#if !EASTL_TYPE_TRAIT_is_union_CONFORMANCE
-	EASTL_DECLARE_UNION(Union) // We have to do this because is_union simply cannot work without user help.
-#endif
+
+struct FinalStruct final
+{
+};
+
+class FinalClass final
+{
+};
 
 
 
@@ -117,12 +123,6 @@ struct Pod1
 {
 	// Empty
 };
-#if !EASTL_TYPE_TRAIT_is_pod_CONFORMANCE
-	EASTL_DECLARE_POD(Pod1) // We have to do this because is_pod simply cannot work without user help.
-#endif
-#if !EASTL_TYPE_TRAIT_is_standard_layout_CONFORMANCE
-	EASTL_DECLARE_STANDARD_LAYOUT(Pod1) // We have to do this because is_standard_layout simply cannot work without user help.
-#endif
 
 
 struct Pod2
@@ -130,12 +130,6 @@ struct Pod2
 	int  mX;
 	Pod1 mPod1;
 };
-#if !EASTL_TYPE_TRAIT_is_pod_CONFORMANCE
-	EASTL_DECLARE_POD(Pod2)
-#endif
-#if !EASTL_TYPE_TRAIT_is_standard_layout_CONFORMANCE
-	EASTL_DECLARE_STANDARD_LAYOUT(Pod2)
-#endif
 
 struct Pod3
 {
@@ -143,12 +137,6 @@ struct Pod3
 	int  mX;
 	Pod1 mPod1;
 };
-#if !EASTL_TYPE_TRAIT_is_pod_CONFORMANCE
-	EASTL_DECLARE_POD(Pod3)
-#endif
-#if !EASTL_TYPE_TRAIT_is_standard_layout_CONFORMANCE
-	EASTL_DECLARE_STANDARD_LAYOUT(Pod3)
-#endif
 
 
 struct NonPod1
@@ -163,15 +151,16 @@ struct NonPod2
 	virtual void Function(){}
 };
 
-#if EASTL_VARIABLE_TEMPLATES_ENABLED
-	struct HasIncrementOperator { HasIncrementOperator& operator++() { return *this; } };
+struct HasIncrementOperator { HasIncrementOperator& operator++() { return *this; } };
 
-    template<typename, typename = eastl::void_t<>>
-	struct has_increment_operator : eastl::false_type {};
+template <class T>
+using has_increment_operator_detection = decltype(++eastl::declval<T>());
 
-	template <typename T>
-	struct has_increment_operator<T, eastl::void_t<decltype(++eastl::declval<T>())>> : eastl::true_type {};
-#endif
+template<typename, typename = eastl::void_t<>>
+struct has_increment_operator_using_void_t : eastl::false_type {};
+
+template <typename T>
+struct has_increment_operator_using_void_t<T, eastl::void_t<has_increment_operator_detection<T>>> : eastl::true_type {};
 
 
 // We use this for the is_copy_constructible test in order to verify that 
@@ -230,7 +219,7 @@ struct NoThrowDestructible
 #if !defined(EA_COMPILER_NO_EXCEPTIONS)
 	struct ThrowDestructible
 	{
-		~ThrowDestructible() throw(int) { throw(int()); }
+		~ThrowDestructible() noexcept(false) { throw(int()); }
 	};
 
 	struct ThrowDestructibleNoexceptFalse
@@ -244,12 +233,6 @@ struct HasTrivialConstructor
 {
 	int x;
 };
-#if !EASTL_TYPE_TRAIT_has_trivial_constructor_CONFORMANCE
-	EASTL_DECLARE_TRIVIAL_CONSTRUCTOR(HasTrivialConstructor) // We have to do this because has_trivial_constructor simply cannot work without user help.
-#endif
-#if !EASTL_TYPE_TRAIT_is_standard_layout_CONFORMANCE
-	EASTL_DECLARE_STANDARD_LAYOUT(HasTrivialConstructor)
-#endif
 
 
 struct NoTrivialConstructor
@@ -258,9 +241,6 @@ struct NoTrivialConstructor
 	int  x;
 	int* px;
 };
-#if !EASTL_TYPE_TRAIT_is_standard_layout_CONFORMANCE
-	EASTL_DECLARE_STANDARD_LAYOUT(NoTrivialConstructor)
-#endif
 
 
 struct HasTrivialCopy
@@ -268,9 +248,6 @@ struct HasTrivialCopy
 	void Function(){}
 	int x;
 };
-#if !EASTL_TYPE_TRAIT_has_trivial_constructor_CONFORMANCE
-	EASTL_DECLARE_TRIVIAL_COPY(HasTrivialCopy) // We have to do this because has_trivial_copy simply cannot work without user help.
-#endif
 
 
 #if defined(EA_COMPILER_MSVC) && (_MSC_VER == 1900)
@@ -292,11 +269,6 @@ struct HasTrivialCopy
 	};
 #endif
 
-struct NoTrivialCopy2
-{
-	NoTrivialCopy1 ntv;
-};
-
 struct NonCopyable
 {
 	NonCopyable() : mX(0) {}
@@ -305,26 +277,6 @@ struct NonCopyable
 	int mX;
 
 	EA_NON_COPYABLE(NonCopyable)
-};
-
-struct HasTrivialAssign
-{
-	void Function(){}
-	int x;
-};
-#if !EASTL_TYPE_TRAIT_has_trivial_assign_CONFORMANCE
-	EASTL_DECLARE_TRIVIAL_ASSIGN(HasTrivialAssign) // We have to do this because has_trivial_assign simply cannot work without user help.
-#endif
-
-struct NoTrivialAssign1
-{
-	virtual ~NoTrivialAssign1(){}
-	virtual void Function(){}
-};
-
-struct NoTrivialAssign2
-{
-	NoTrivialAssign1 nta;
 };
 
 struct Polymorphic1
@@ -349,13 +301,19 @@ struct NonPolymorphic1
 	void Function(){}
 };
 
+// Disable the following warning:
+//     warning: ‘struct Abstract’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+// We explicitly want this class not to have a virtual destructor to test our type traits.
+EA_DISABLE_VC_WARNING(4265)
+EA_DISABLE_CLANG_WARNING(-Wnon-virtual-dtor)
+EA_DISABLE_GCC_WARNING(-Wnon-virtual-dtor)
 struct Abstract
 {
-	#if defined(EA_COMPILER_GNUC) // GCC warns about this, so we include it for this class, even though for this compiler it partly defeats the purpose of its usage.
-		virtual ~Abstract(){}
-	#endif
 	virtual void Function() = 0;
 };
+EA_RESTORE_GCC_WARNING()
+EA_RESTORE_CLANG_WARNING()
+EA_RESTORE_VC_WARNING()
 
 struct AbstractWithDtor
 {
@@ -370,29 +328,11 @@ struct DeletedDtor
 	#endif
 };
 
-#if (EASTL_TYPE_TRAIT_is_destructible_CONFORMANCE == 0)
-	EASTL_DECLARE_IS_DESTRUCTIBLE(DeletedDtor, false)
-#endif
-
 struct Assignable
 {
 	void operator=(const Assignable&){}
 	void operator=(const Pod1&){}
 };
-
-class HiddenAssign
-{
-public:
-	HiddenAssign();
-
-private:
-	HiddenAssign(const HiddenAssign& x);
-	HiddenAssign& operator=(const HiddenAssign& x);
-};
-
-#if !EASTL_TYPE_TRAIT_has_trivial_assign_CONFORMANCE
-	EASTL_DECLARE_TRIVIAL_ASSIGN(HiddenAssign)
-#endif
 
 
 
@@ -419,14 +359,6 @@ typename eastl::enable_if<eastl::is_integral<T>::value, T>::type EnableIfTestFun
 template<typename T>
 typename eastl::disable_if<eastl::is_signed<T>::value, T>::type EnableIfTestFunction(T) 
 	{ return 777; }
- 
-
-
-// Test that EASTL_DECLARE_TRIVIAL_ASSIGN can be used to get around case whereby 
-// the copy constructor and operator= are private. Normally vector requires this.
-// ** This is disabled because it turns out that vector in fact requires the 
-// constructor for some uses. But we have code below which tests just part of vector.
-// template class eastl::vector<HiddenAssign>;
 
 
 typedef char Array[32];
@@ -454,12 +386,13 @@ typedef void (*FunctionVoidVoidPtr)();
 namespace
 {
 	const eastl::string gEmptyStringInstance("");
+
+	const eastl::integral_constant<int*, nullptr> gIntNullptrConstant;
+	static_assert(gIntNullptrConstant() == nullptr, "");
 }
 
 int TestTypeTraits()
 {
-	EASTLTest_Printf("TestTypeTraits\n");
-
 	int nErrorCount = 0;
 
 
@@ -488,10 +421,12 @@ int TestTypeTraits()
 	static_assert(is_same<bool_constant<false>::type, integral_constant<bool, false>::type>::value, "bool_constant failure");
 
 
+	// type_identity
+	static_assert(sizeof(type_identity<int>::type) == sizeof(int), "type_identity failure");
+	static_assert((is_same<int, type_identity<int>::type >::value == true), "type_identity failure");
+	static_assert(sizeof(type_identity_t<int>) == sizeof(int), "type_identity failure");
+	static_assert((is_same_v<int, type_identity_t<int>> == true), "type_identity failure");
 
-	// identity
-	static_assert(sizeof(identity<int>::type) == sizeof(int), "identity failure");
-	static_assert((is_same<int, identity<int>::type >::value == true), "identity failure");
 
 
 	// is_void
@@ -523,6 +458,25 @@ int TestTypeTraits()
 	static_assert(is_integral<float>::value == false, "is_integral failure");
 	EATEST_VERIFY(GetType(is_integral<float>()) == false);
 
+	static_assert(is_integral<bool>::value,               "is_integral failure");
+	static_assert(is_integral<char8_t>::value,            "is_integral failure");
+	static_assert(is_integral<char16_t>::value,           "is_integral failure");
+	static_assert(is_integral<char32_t>::value,           "is_integral failure");
+	static_assert(is_integral<char>::value,               "is_integral failure");
+	static_assert(is_integral<int>::value,                "is_integral failure");
+	static_assert(is_integral<long long>::value,          "is_integral failure");
+	static_assert(is_integral<long>::value,               "is_integral failure");
+	static_assert(is_integral<short>::value,              "is_integral failure");
+	static_assert(is_integral<signed char>::value,        "is_integral failure");
+	static_assert(is_integral<unsigned char>::value,      "is_integral failure");
+	static_assert(is_integral<unsigned int>::value,       "is_integral failure");
+	static_assert(is_integral<unsigned long long>::value, "is_integral failure");
+	static_assert(is_integral<unsigned long>::value,      "is_integral failure");
+	static_assert(is_integral<unsigned short>::value,     "is_integral failure");
+#ifndef EA_WCHAR_T_NON_NATIVE // If wchar_t is a native type instead of simply a define to an existing type which is already handled...
+	static_assert(is_integral<wchar_t>::value,            "is_integral failure");
+#endif
+
 
 	// is_floating_point
 	static_assert(is_floating_point<double>::value == true, "is_floating_point failure");
@@ -537,25 +491,32 @@ int TestTypeTraits()
 
 	// is_arithmetic
 	static_assert(is_arithmetic<float>::value == true, "is_arithmetic failure");
+	static_assert(is_arithmetic_v<float> == true,      "is_arithmetic failure");
 	EATEST_VERIFY(GetType(is_arithmetic<float>()) == true);
 
 	static_assert(is_arithmetic<Class>::value == false, "is_arithmetic failure");
+	static_assert(is_arithmetic_v<Class> == false,      "is_arithmetic failure");
 	EATEST_VERIFY(GetType(is_arithmetic<Class>()) == false);
 
 
 	// is_fundamental
 	static_assert(is_fundamental<void>::value == true, "is_fundamental failure");
+	static_assert(is_fundamental_v<void> == true,      "is_fundamental failure");
 	EATEST_VERIFY(GetType(is_fundamental<void>()) == true);
 
 	#ifndef EA_WCHAR_T_NON_NATIVE // If wchar_t is a native type instead of simply a define to an existing type which is already handled...
 		static_assert(is_fundamental<wchar_t>::value == true, "is_fundamental failure");
+		static_assert(is_fundamental_v<wchar_t> == true,      "is_fundamental failure");
 		EATEST_VERIFY(GetType(is_fundamental<wchar_t>()) == true);
 	#endif
 
 	static_assert(is_fundamental<Class>::value == false, "is_fundamental failure");
+	static_assert(is_fundamental_v<Class> == false,      "is_fundamental failure");
 	EATEST_VERIFY(GetType(is_fundamental<Class>()) == false);
 
 	static_assert(is_fundamental<std::nullptr_t>::value == true, "is_fundamental failure");
+	static_assert(is_fundamental_v<std::nullptr_t> == true,      "is_fundamental failure");
+
 
 	// is_array
 	static_assert(is_array<Array>::value == true, "is_array failure");
@@ -573,12 +534,63 @@ int TestTypeTraits()
 	EATEST_VERIFY(GetType(is_array<uint32_t*>()) == false);
 
 
+	//is_bounded_array
+	static_assert(is_bounded_array<Array>::value == true, "is_bounded_array failure");
+	EATEST_VERIFY(GetType(is_bounded_array<Array>()) == true);
+
+	static_assert(is_bounded_array<ArrayConst>::value == true,   "is_bounded_array failure");
+	EATEST_VERIFY(GetType(is_bounded_array<ArrayConst>()) == true);
+
+	static_assert(is_bounded_array<void>::value == false,		"is_bounded_array failure");
+	static_assert(is_bounded_array<PodA>::value == false,		"is_bounded_array failure");
+	static_assert(is_bounded_array<int>::value == false,        "is_bounded_array failure");
+	static_assert(is_bounded_array<int[32]>::value == true,        "is_bounded_array failure");
+	static_assert(is_bounded_array<int[]>::value == false,        "is_bounded_array failure");
+	static_assert(is_bounded_array<int[0]>::value == false,		"is_bounded_array failure");
+	static_assert(is_bounded_array<void>::value == false,		"is_bounded_array failure");
+
+	static_assert(is_bounded_array<uint32_t>::value == false,    "is_bounded_array failure");
+	EATEST_VERIFY(GetType(is_bounded_array<uint32_t>()) == false);
+
+	static_assert(is_bounded_array<uint32_t*>::value == false,   "is_bounded_array failure");
+	EATEST_VERIFY(GetType(is_bounded_array<uint32_t*>()) == false);
+
+
+	//is_unbounded_array
+	static_assert(is_unbounded_array<Array>::value == false, "is_unbounded_array failure");
+	EATEST_VERIFY(GetType(is_unbounded_array<Array>()) == false);
+
+	static_assert(is_unbounded_array<ArrayConst>::value == false,   "is_unbounded_array failure");
+	EATEST_VERIFY(GetType(is_unbounded_array<ArrayConst>()) == false);
+
+	static_assert(is_unbounded_array<void>::value == false,			"is_unbounded_array failure");
+	static_assert(is_unbounded_array<PodA>::value == false,			"is_unbounded_array failure");
+	static_assert(is_unbounded_array<int>::value == false,        "is_unbounded_array failure");
+	static_assert(is_unbounded_array<int[32]>::value == false,        "is_unbounded_array failure");
+	static_assert(is_unbounded_array<int[]>::value == true,        "is_unbounded_array failure");
+	static_assert(is_unbounded_array<int[0]>::value == false,		"is_unbounded_array failure");
+	static_assert(is_unbounded_array<void>::value == false,			"is_unbounded_array failure");
+
+	static_assert(is_unbounded_array<uint32_t>::value == false,    "is_unbounded_array failure");
+	EATEST_VERIFY(GetType(is_unbounded_array<uint32_t>()) == false);
+
+	static_assert(is_unbounded_array<uint32_t*>::value == false,   "is_unbounded_array failure");
+	EATEST_VERIFY(GetType(is_unbounded_array<uint32_t*>()) == false);
+
+
+
 	// is_reference
 	static_assert(is_reference<Class&>::value == true,        "is_reference failure");
 	EATEST_VERIFY(GetType(is_reference<Class&>()) == true);
 
+	static_assert(is_reference<Class&&>::value == true,        "is_reference failure");
+	EATEST_VERIFY(GetType(is_reference<Class&&>()) == true);
+
 	static_assert(is_reference<const Class&>::value == true,  "is_reference failure");
 	EATEST_VERIFY(GetType(is_reference<const Class&>()) == true);
+
+	static_assert(is_reference<const Class&&>::value == true,  "is_reference failure");
+	EATEST_VERIFY(GetType(is_reference<const Class&&>()) == true);
 
 	static_assert(is_reference<Class>::value == false,        "is_reference failure");
 	EATEST_VERIFY(GetType(is_reference<Class>()) == false);
@@ -591,6 +603,10 @@ int TestTypeTraits()
 	static_assert(is_member_function_pointer<int>::value == false,            "is_member_function_pointer failure");
 	static_assert(is_member_function_pointer<int(Class::*)>::value == false,  "is_member_function_pointer failure");
 	static_assert(is_member_function_pointer<int(Class::*)()>::value == true, "is_member_function_pointer failure");
+	static_assert(is_member_function_pointer<int(Class::*)(...)>::value == true, "is_member_function_pointer failure");
+	static_assert(is_member_function_pointer<int(Class::*)() noexcept>::value == true, "is_member_function_pointer failure");
+	static_assert(is_member_function_pointer<int(Class::*)() &>::value == true, "is_member_function_pointer failure");
+	static_assert(is_member_function_pointer<int(Class::*)() &&>::value == true, "is_member_function_pointer failure");
 
 
 	// is_member_object_pointer
@@ -603,6 +619,9 @@ int TestTypeTraits()
 	static_assert(is_member_pointer<int>::value == false,            "is_member_pointer failure");
 	static_assert(is_member_pointer<int(Class::*)>::value == true,   "is_member_pointer failure");
 	static_assert(is_member_pointer<int(Class::*)()>::value == true, "is_member_pointer failure");
+	static_assert(is_member_pointer<int(Class::* const)>::value == true, "is_member_pointer failure");
+	static_assert(is_member_pointer<int(Class::* volatile)>::value == true, "is_member_pointer failure");
+	static_assert(is_member_pointer<int(Class::* const volatile)>::value == true, "is_member_pointer failure");
 
 
 	// is_pointer
@@ -615,24 +634,38 @@ int TestTypeTraits()
 	#endif
 
 	// is_enum
-	static_assert(is_enum<Enum>::value == true, "is_enum failure");
+	static_assert(is_enum<Enum>::value == true,            "is_enum failure ");
+	static_assert(is_enum_v<Enum> == true,                 "is_enum failure ");
 	EATEST_VERIFY(GetType(is_enum<Enum>()) == true);
 
-	static_assert(is_enum<const Enum>::value == true, "is_enum failure");
+	static_assert(is_enum<const Enum>::value == true,      "is_enum failure ");
+	static_assert(is_enum_v<const Enum> == true,           "is_enum failure ");
 	EATEST_VERIFY(GetType(is_enum<const Enum>()) == true);
 
-	static_assert(is_enum<Enum*>::value == false, "is_enum failure");
+	static_assert(is_enum<Enum*>::value == false,          "is_enum failure ");
+	static_assert(is_enum_v<Enum*> == false,               "is_enum failure ");
 	EATEST_VERIFY(GetType(is_enum<Enum*>()) == false);
 
-	static_assert(is_enum<Class>::value == false, "is_enum failure");
+	static_assert(is_enum<Class>::value == false,          "is_enum failure ");
+	static_assert(is_enum_v<Class> == false,               "is_enum failure ");
 	EATEST_VERIFY(GetType(is_enum<Class>()) == false);
+
+	static_assert(is_enum<Enum&>::value == false,          "is_enum failure ");
+	static_assert(is_enum_v<Enum&> == false,               "is_enum failure ");
+	EATEST_VERIFY(GetType(is_enum<Enum&>()) == false);
+
+	static_assert(is_enum<Enum&&>::value == false,          "is_enum failure ");
+	static_assert(is_enum_v<Enum&&> == false,               "is_enum failure ");
+	EATEST_VERIFY(GetType(is_enum<Enum&&>()) == false);
 
 
 	// is_union
 	static_assert(is_union<Union>::value == true, "is_union failure");
+	static_assert(is_union_v<Union> == true,      "is_union failure");
 	EATEST_VERIFY(GetType(is_union<Union>()) == true);
 
 	static_assert(is_union<int>::value == false, "is_union failure");
+	static_assert(is_union_v<int> == false,      "is_union failure");
 	EATEST_VERIFY(GetType(is_union<int>()) == false);
 
 
@@ -654,19 +687,44 @@ int TestTypeTraits()
 
 
 	// is_function
-	static_assert(is_function<void>::value == false,                                "is_function failure");
-	static_assert(is_function<FunctionVoidVoid>::value == true,                     "is_function failure");
-	static_assert(is_function<FunctionVoidVoid&>::value == false,                   "is_function failure");
-	static_assert(is_function<FunctionIntVoid>::value == true,                      "is_function failure");
-	static_assert(is_function<FunctionIntFloat>::value == true,                     "is_function failure");
-	static_assert(is_function<FunctionVoidVoidPtr>::value == false,                 "is_function failure");
-	static_assert(is_function<int>::value == false,                                 "is_function failure");
-	static_assert(is_function<int[3]>::value == false,                              "is_function failure");
-	static_assert(is_function<int[]>::value == false,                               "is_function failure");
-	static_assert(is_function<Class>::value == false,                               "is_function failure");
+	static_assert(is_function<void>::value == false,                      "is_function failure");
+	static_assert(is_function<FunctionVoidVoid>::value == true,           "is_function failure");
+	static_assert(is_function<FunctionVoidVoid&>::value == false,		  "is_function failure");
+	static_assert(is_function<FunctionIntVoid>::value == true,            "is_function failure");
+	static_assert(is_function<FunctionIntFloat>::value == true,           "is_function failure");
+	static_assert(is_function<FunctionVoidVoidPtr>::value == false,       "is_function failure");
+	static_assert(is_function<int>::value == false,                       "is_function failure");
+	static_assert(is_function<int[3]>::value == false,                    "is_function failure");
+	static_assert(is_function<int[]>::value == false,                     "is_function failure");
+	static_assert(is_function<Class>::value == false,                     "is_function failure");
 	#if EASTL_TYPE_TRAIT_is_function_CONFORMANCE
 		// typedef int PrintfConst(const char*, ...) const;
-		static_assert(is_function<int (const char*, ...)>::value == true,           "is_function failure");  // This is the signature of printf.
+		static_assert(is_function<int (const char*, ...)>::value == true, "is_function failure");  // This is the signature of printf.
+	#endif
+		
+	static_assert(is_function<int (float)>::value == true, "is_function failure");
+	static_assert(is_function<int (float) const>::value == true, "is_function failure");
+	static_assert(is_function<int(float) volatile>::value == true, "is_function failure");
+	static_assert(is_function<int(float) const volatile>::value == true, "is_function failure");
+	static_assert(is_function<int(float)&>::value == true, "is_function failure");
+	static_assert(is_function<int(float)&&>::value == true, "is_function failure");
+	static_assert(is_function<int(float) noexcept>::value == true, "is_function failure");
+	static_assert(is_function<FunctionIntFloat &>::value == false, "is_function failure"); // reference to function, not a l-value reference qualified function
+	static_assert(is_function<FunctionIntFloat &&>::value == false, "is_function failure");
+
+	static_assert(is_function_v<void> == false,                           "is_function failure");
+	static_assert(is_function_v<FunctionVoidVoid> == true,                "is_function failure");
+	static_assert(is_function_v<FunctionVoidVoid&> == false,              "is_function failure");
+	static_assert(is_function_v<FunctionIntVoid> == true,                 "is_function failure");
+	static_assert(is_function_v<FunctionIntFloat> == true,                "is_function failure");
+	static_assert(is_function_v<FunctionVoidVoidPtr> == false,            "is_function failure");
+	static_assert(is_function_v<int> == false,                            "is_function failure");
+	static_assert(is_function_v<int[3]> == false,                         "is_function failure");
+	static_assert(is_function_v<int[]> == false,                          "is_function failure");
+	static_assert(is_function_v<Class> == false,                          "is_function failure");
+	#if EASTL_TYPE_TRAIT_is_function_CONFORMANCE
+		// typedef int PrintfConst(const char*, ...) const;
+		static_assert(is_function_v<int (const char*, ...)> == true,      "is_function failure");  // This is the signature of printf.
 	#endif
 
 
@@ -682,6 +740,9 @@ int TestTypeTraits()
 
 	static_assert(is_object<Class&>::value == false, "is_object failure");
 	EATEST_VERIFY(GetType(is_object<Class&>()) == false);
+
+	static_assert(is_object<Class&&>::value == false, "is_object failure");
+	EATEST_VERIFY(GetType(is_object<Class&&>()) == false);
 
 
 	// is_scalar
@@ -739,6 +800,8 @@ int TestTypeTraits()
 	static_assert(is_const<ConstVolatileIntReference>::value == false, "is_const failure"); // Note here that the int is const, not the reference to the int.
 	EATEST_VERIFY(GetType(is_const<ConstVolatileIntReference>()) == false);
 
+	static_assert(is_const<void() const>::value == false, "is_const failure");
+	EATEST_VERIFY(GetType(is_const<void() const>()) == false);
 
 	// is_volatile
 	static_assert(is_volatile<Int>::value == false, "is_volatile failure");
@@ -762,20 +825,26 @@ int TestTypeTraits()
 	static_assert(is_volatile<ConstVolatileIntReference>::value == false, "is_volatile failure"); // Note here that the int is volatile, not the reference to the int.
 	EATEST_VERIFY(GetType(is_volatile<ConstVolatileIntReference>()) == false);
 
+	static_assert(is_volatile<void() const>::value == false, "is_volatile failure");
+	EATEST_VERIFY(GetType(is_volatile<void() const>()) == false);
 
-	// underlying_type
+
+	// underlying_type and to_underlying
 	#if EASTL_TYPE_TRAIT_underlying_type_CONFORMANCE && !defined(EA_COMPILER_NO_STRONGLY_TYPED_ENUMS) // If we can execute this test...
 		enum UnderlyingTypeTest : uint16_t { firstVal = 0, secondVal = 1 };
-		static_assert(sizeof(underlying_type<UnderlyingTypeTest>::type) == sizeof(uint16_t), "underlying_type failure");
-	#endif
+		
+		constexpr bool isUnderlyingTypeCorrect = is_same_v<underlying_type_t<UnderlyingTypeTest>, uint16_t>;
+		static_assert(isUnderlyingTypeCorrect, "Wrong type for underlying_type_t.");
+		EATEST_VERIFY(isUnderlyingTypeCorrect);
+		
+		auto v1 = to_underlying(UnderlyingTypeTest::firstVal); 
+		auto v2 = to_underlying(UnderlyingTypeTest::secondVal); 
 
+		constexpr bool isToUnderlyingReturnTypeCorrect = is_same_v<decltype(v1), uint16_t>;
+		static_assert(isToUnderlyingReturnTypeCorrect, "Wrong return type for to_underlying.");
+		EATEST_VERIFY(isToUnderlyingReturnTypeCorrect);
 
-	// is_literal_type
-	static_assert((is_literal_type<int>::value == true),          "is_literal_type failure");
-	static_assert((is_literal_type<Enum>::value == true),         "is_literal_type failure");
-	#if EASTL_TYPE_TRAIT_is_literal_type_CONFORMANCE
-		static_assert((is_literal_type<PodA>::value == true),     "is_literal_type failure");
-		static_assert((is_literal_type<NonPod1>::value == false), "is_literal_type failure");
+		EATEST_VERIFY(v1 == 0 && v2 == 1);
 	#endif
 
 
@@ -813,30 +882,39 @@ int TestTypeTraits()
 
 	// is_standard_layout
 	static_assert(is_standard_layout<Pod1>::value == true, "is_standard_layout<Pod1> failure");
+	static_assert(is_standard_layout_v<Pod1> == true,      "is_standard_layout<Pod1> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<Pod1>()) == true);
 
 	static_assert(is_standard_layout<Pod2>::value == true, "is_standard_layout<Pod2> failure");
+	static_assert(is_standard_layout_v<Pod2> == true,      "is_standard_layout<Pod2> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<Pod2>()) == true);
 
 	static_assert(is_standard_layout<Pod3>::value == true, "is_standard_layout<Pod3> failure");
+	static_assert(is_standard_layout_v<Pod3> == true,      "is_standard_layout<Pod3> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<Pod3>()) == true);
 
 	static_assert(is_standard_layout<float>::value == true, "is_standard_layout<float> failure");
+	static_assert(is_standard_layout_v<float> == true,      "is_standard_layout<float> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<float>()) == true);
 
 	static_assert(is_standard_layout<Pod1*>::value == true, "is_standard_layout<Pod1*> failure");
+	static_assert(is_standard_layout_v<Pod1*> == true,      "is_standard_layout<Pod1*> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<Pod1*>()) == true);
 
 	static_assert(is_standard_layout<NonPod1>::value == false, "is_standard_layout<NonPod1> failure");
+	static_assert(is_standard_layout_v<NonPod1> == false,      "is_standard_layout<NonPod1> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<NonPod1>()) == false);
 
 	static_assert(is_standard_layout<NonPod2>::value == false, "is_standard_layout<NonPod2> failure");
+	static_assert(is_standard_layout_v<NonPod2> == false,      "is_standard_layout<NonPod2> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<NonPod2>()) == false);
 
 	static_assert(is_standard_layout<HasTrivialConstructor>::value == true, "is_standard_layout<HasTrivialConstructor> failure");
+	static_assert(is_standard_layout_v<HasTrivialConstructor> == true,      "is_standard_layout<HasTrivialConstructor> failure");
 	EATEST_VERIFY(GetType(is_standard_layout<HasTrivialConstructor>()) == true);
 
 	static_assert(is_standard_layout<NoTrivialConstructor>::value == true, "is_standard_layout<NoTrivialConstructor> failure");        // A key difference between a POD and Standard Layout is that the latter is true if there is a constructor.
+	static_assert(is_standard_layout_v<NoTrivialConstructor> == true, "is_standard_layout<NoTrivialConstructor> failure");        // A key difference between a POD and Standard Layout is that the latter is true if there is a constructor.
 	EATEST_VERIFY(GetType(is_standard_layout<NoTrivialConstructor>()) == true);
 
 
@@ -855,156 +933,142 @@ int TestTypeTraits()
 
 
 	// is_polymorphic
-	static_assert(is_polymorphic<Polymorphic1>::value == true,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<Polymorphic1>::value == true,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<Polymorphic1>()) == true);
 
-	static_assert(is_polymorphic<Polymorphic2>::value == true,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<Polymorphic2>::value == true,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<Polymorphic2>()) == true);
 
-	static_assert(is_polymorphic<Polymorphic3>::value == true,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<Polymorphic3>::value == true,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<Polymorphic3>()) == true);
 
-	static_assert(is_polymorphic<NonPolymorphic1>::value == false,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<NonPolymorphic1>::value == false,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<NonPolymorphic1>()) == false);
 
-	static_assert(is_polymorphic<int>::value == false,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<int>::value == false,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<int>()) == false);
 
-	static_assert(is_polymorphic<Polymorphic1*>::value == false,  "has_trivial_constructor failure");
+	static_assert(is_polymorphic<Polymorphic1*>::value == false,  "is_polymorphic failure");
 	EATEST_VERIFY(GetType(is_polymorphic<Polymorphic1*>()) == false);
 
 
-	// has_trivial_constructor
-	static_assert(has_trivial_constructor<int>::value == true,  "has_trivial_constructor failure");
-	EATEST_VERIFY(GetType(has_trivial_constructor<int>()) == true);
-
-	static_assert(has_trivial_constructor<int*>::value == true,  "has_trivial_constructor failure");
-	EATEST_VERIFY(GetType(has_trivial_constructor<int*>()) == true);
-
-	static_assert(has_trivial_constructor<HasTrivialConstructor>::value == true,  "has_trivial_constructor failure");
-	EATEST_VERIFY(GetType(has_trivial_constructor<HasTrivialConstructor>()) == true);
-
-	static_assert(has_trivial_constructor<NoTrivialConstructor>::value == false,  "has_trivial_constructor failure");
-	EATEST_VERIFY(GetType(has_trivial_constructor<NoTrivialConstructor>()) == false);
-
-	static_assert(has_trivial_constructor<int&>::value == false,  "has_trivial_constructor failure");
-	EATEST_VERIFY(GetType(has_trivial_constructor<int&>()) == false);
-
-
-	// has_trivial_copy
-	static_assert(has_trivial_copy<int>::value == true,             "has_trivial_copy failure");
-	EATEST_VERIFY(GetType(has_trivial_copy<int>()) == true);
-
-	static_assert(has_trivial_copy<int*>::value == true,            "has_trivial_copy failure");
-	EATEST_VERIFY(GetType(has_trivial_copy<int*>()) == true);
-
-	static_assert(has_trivial_copy<HasTrivialCopy>::value == true,   "has_trivial_copy failure");
-	EATEST_VERIFY(GetType(has_trivial_copy<HasTrivialCopy>()) == true);
-
-	static_assert(has_trivial_copy<NoTrivialCopy1>::value == false,  "has_trivial_copy failure");
-	EATEST_VERIFY(GetType(has_trivial_copy<NoTrivialCopy1>()) == false);
-
-	static_assert(has_trivial_copy<NoTrivialCopy2>::value == false,  "has_trivial_copy failure");
-	EATEST_VERIFY(GetType(has_trivial_copy<NoTrivialCopy2>()) == false);
-
-
-	// has_trivial_assign
-	static_assert(has_trivial_assign<int>::value == true,               "has_trivial_assign failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<int>()) == true);
-
-	static_assert(has_trivial_assign<int*>::value == true,              "has_trivial_assign failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<int*>()) == true);
-
-	static_assert(has_trivial_assign<HasTrivialAssign>::value == true,  "has_trivial_assign failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<HasTrivialAssign>()) == true);
-
-	static_assert(has_trivial_assign<NoTrivialAssign1>::value == false, "has_trivial_assign failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<NoTrivialAssign1>()) == false);
-
-	static_assert(has_trivial_assign<NoTrivialAssign2>::value == false, "has_trivial_assign failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<NoTrivialAssign2>()) == false);
-
-
-	// has_trivial_destructor
-	static_assert(has_trivial_assign<int>::value == true,  "has_trivial_relocate failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<int>()) == true);
-
-	static_assert(has_trivial_assign<int*>::value == true,  "has_trivial_relocate failure");
-	EATEST_VERIFY(GetType(has_trivial_assign<int*>()) == true);
-
-
-	// has_trivial_relocate
-	static_assert(has_trivial_relocate<int>::value == true,  "has_trivial_relocate failure");
-	EATEST_VERIFY(GetType(has_trivial_relocate<int>()) == true);
-
-	static_assert(has_trivial_relocate<int*>::value == true,  "has_trivial_relocate failure");
-	EATEST_VERIFY(GetType(has_trivial_relocate<int*>()) == true);
-
-
 	// is_signed
-	static_assert(is_signed<int>::value == true,            "is_unsigned failure");
+	static_assert(is_signed<int>::value == true,                "is_signed failure ");
+	static_assert(is_signed_v<int> == true,                     "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<int>()) == true);
 
-	static_assert(is_signed<const int64_t>::value == true,  "is_unsigned failure");
+	static_assert(is_signed<const int64_t>::value == true,      "is_signed failure ");
+	static_assert(is_signed_v<const int64_t> == true,           "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<const int64_t>()) == true);
 
-	static_assert(is_signed<uint32_t>::value == false,      "is_unsigned failure");
+	static_assert(is_signed<uint32_t>::value == false,          "is_signed failure ");
+	static_assert(is_signed_v<uint32_t> == false,               "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<uint32_t>()) == false);
 
-	static_assert(is_signed<bool>::value == false,          "is_unsigned failure");
+	static_assert(is_signed<bool>::value == false,              "is_signed failure ");
+	static_assert(is_signed_v<bool> == false,                   "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<bool>()) == false);
 
-	static_assert(is_signed<float>::value == true,          "is_unsigned failure");
+	static_assert(is_signed<float>::value == true,              "is_signed failure ");
+	static_assert(is_signed_v<float> == true,                   "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<float>()) == true);
 
-	static_assert(is_signed<double>::value == true,         "is_unsigned failure");
+	static_assert(is_signed<double>::value == true,             "is_signed failure ");
+	static_assert(is_signed_v<double> == true,                  "is_signed failure ");
 	EATEST_VERIFY(GetType(is_signed<double>()) == true);
+	
+	static_assert(is_signed<char16_t>::value == false,			"is_signed failure ");
+	static_assert(is_signed_v<char16_t> == false,				"is_signed failure ");
+	EATEST_VERIFY(GetType(is_signed<char16_t>()) == false);
 
+	static_assert(is_signed<char32_t>::value == false,			"is_signed failure ");
+	static_assert(is_signed_v<char32_t> == false,				"is_signed failure ");
+	EATEST_VERIFY(GetType(is_signed<char32_t>()) == false);
+
+#if EASTL_GCC_STYLE_INT128_SUPPORTED
+	static_assert(is_signed<__int128_t>::value == true,			"is_signed failure ");
+	static_assert(is_signed_v<__int128_t> == true,				"is_signed failure ");
+	EATEST_VERIFY(GetType(is_signed<__int128_t>()) == true);
+
+	static_assert(is_signed<__uint128_t>::value == false,		"is_signed failure ");
+	static_assert(is_signed_v<__uint128_t> == false,			"is_signed failure ");
+	EATEST_VERIFY(GetType(is_signed<__uint128_t>()) == false);
+#endif
 
 	// is_unsigned
-	static_assert(is_unsigned<unsigned int>::value == true,    "is_unsigned failure");
+	static_assert(is_unsigned<unsigned int>::value == true,        "is_unsigned failure ");
+	static_assert(is_unsigned_v<unsigned int> == true,             "is_unsigned failure ");
 	EATEST_VERIFY(GetType(is_unsigned<unsigned int>()) == true);
 
-	static_assert(is_unsigned<const uint64_t>::value == true,  "is_unsigned failure");
+	static_assert(is_unsigned<const uint64_t>::value == true,      "is_unsigned failure ");
+	static_assert(is_unsigned_v<const uint64_t> == true,           "is_unsigned failure ");
 	EATEST_VERIFY(GetType(is_unsigned<const uint64_t>()) == true);
 
-	static_assert(is_unsigned<int32_t>::value == false,        "is_unsigned failure");
+	static_assert(is_unsigned<int32_t>::value == false,            "is_unsigned failure ");
+	static_assert(is_unsigned_v<int32_t> == false,                 "is_unsigned failure ");
 	EATEST_VERIFY(GetType(is_unsigned<int32_t>()) == false);
 
-	static_assert(is_unsigned<bool>::value == false,           "is_unsigned failure");
-	EATEST_VERIFY(GetType(is_unsigned<bool>()) == false);
+	static_assert(is_unsigned<bool>::value == true,                "is_unsigned failure ");
+	static_assert(is_unsigned_v<bool> == true,                     "is_unsigned failure ");
+	EATEST_VERIFY(GetType(is_unsigned<bool>()) == true);
 
-	static_assert(is_unsigned<float>::value == false,          "is_unsigned failure");
+	static_assert(is_unsigned<float>::value == false,              "is_unsigned failure ");
+	static_assert(is_unsigned_v<float> == false,                   "is_unsigned failure ");
 	EATEST_VERIFY(GetType(is_unsigned<float>()) == false);
 
-	static_assert(is_unsigned<double>::value == false,         "is_unsigned failure");
+	static_assert(is_unsigned<double>::value == false,             "is_unsigned failure ");
+	static_assert(is_unsigned_v<double> == false,                  "is_unsigned failure ");
 	EATEST_VERIFY(GetType(is_unsigned<double>()) == false);
+	
+	static_assert(is_unsigned<char16_t>::value == true,			   "is_unsigned failure ");
+	static_assert(is_unsigned_v<char16_t> == true,				   "is_unsigned failure ");
+	EATEST_VERIFY(GetType(is_unsigned<char16_t>()) == true);
+
+	static_assert(is_unsigned<char32_t>::value == true,			   "is_unsigned failure ");
+	static_assert(is_unsigned_v<char32_t> == true,				   "is_unsigned failure ");
+	EATEST_VERIFY(GetType(is_unsigned<char32_t>()) == true);
+
+#if EASTL_GCC_STYLE_INT128_SUPPORTED
+	static_assert(is_unsigned<__int128_t>::value == false,		   "is_unsigned failure ");
+	static_assert(is_unsigned_v<__int128_t> == false,			   "is_unsigned failure ");
+	EATEST_VERIFY(GetType(is_unsigned<__int128_t>()) == false);
+
+	static_assert(is_unsigned<__uint128_t>::value == true,		   "is_unsigned failure ");
+	static_assert(is_unsigned_v<__uint128_t> == true,			   "is_unsigned failure ");
+	EATEST_VERIFY(GetType(is_unsigned<__uint128_t>()) == true);
+#endif
 
 
 	// is_lvalue_reference
-	static_assert((is_lvalue_reference<Class>::value == false),        "is_lvalue_reference failure");
-	static_assert((is_lvalue_reference<Class&>::value == true),        "is_lvalue_reference failure");
-	#if !EASTL_NO_RVALUE_REFERENCES
-		static_assert((is_lvalue_reference<Class&&>::value == false),  "is_lvalue_reference failure");
-	#endif
-	static_assert((is_lvalue_reference<int>::value == false),          "is_lvalue_reference failure");
-	static_assert((is_lvalue_reference<int&>::value == true),          "is_lvalue_reference failure");
-	#if !EASTL_NO_RVALUE_REFERENCES
-		static_assert((is_lvalue_reference<int&&>::value == false),    "is_lvalue_reference failure");
-	#endif
+	static_assert((is_lvalue_reference<Class>::value == false),   "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference<Class&>::value == true),   "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference<Class&&>::value == false), "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference<int>::value == false),     "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference<int&>::value == true),     "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference<int&&>::value == false),   "is_lvalue_reference failure");
+
+	static_assert((is_lvalue_reference_v<Class> == false),        "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference_v<Class&> == true),        "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference_v<Class&&> == false),      "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference_v<int> == false),          "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference_v<int&> == true),          "is_lvalue_reference failure");
+	static_assert((is_lvalue_reference_v<int&&> == false),        "is_lvalue_reference failure");
 
 
 	// is_rvalue_reference
-	static_assert((is_rvalue_reference<Class>::value == false),       "is_rvalue_reference failure");
-	static_assert((is_rvalue_reference<Class&>::value == false),      "is_rvalue_reference failure");
-	#if !EASTL_NO_RVALUE_REFERENCES
-		static_assert((is_rvalue_reference<Class&&>::value == true),  "is_rvalue_reference failure");
-	#endif
-	static_assert((is_rvalue_reference<int>::value == false),         "is_rvalue_reference failure");
-	static_assert((is_rvalue_reference<int&>::value == false),        "is_rvalue_reference failure");
-	#if !EASTL_NO_RVALUE_REFERENCES
-		static_assert((is_rvalue_reference<int&&>::value == true),    "is_rvalue_reference failure");
-	#endif
+	static_assert((is_rvalue_reference<Class>::value == false),  "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference<Class&>::value == false), "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference<Class&&>::value == true), "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference<int>::value == false),    "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference<int&>::value == false),   "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference<int&&>::value == true),   "is_rvalue_reference failure");
+
+	static_assert((is_rvalue_reference_v<Class> == false),  "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference_v<Class&> == false), "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference_v<Class&&> == true), "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference_v<int> == false),    "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference_v<int&> == false),   "is_rvalue_reference failure");
+	static_assert((is_rvalue_reference_v<int&&> == true),   "is_rvalue_reference failure");
 
 
 	// is_assignable
@@ -1034,37 +1098,6 @@ int TestTypeTraits()
 		static_assert((eastl::is_assignable<int, float>::value             == false),  "is_assignable failure");
 		static_assert((eastl::is_assignable<const char*, char*>::value     == false),  "is_assignable failure");
 		static_assert((eastl::is_assignable<int[], int[]>::value           == false),  "is_assignable failure");
-	#endif
-
-
-	// is_lvalue_assignable
-	static_assert((eastl::is_lvalue_assignable<int&, int>::value              == true),   "is_lvalue_assignable failure");
-	static_assert((eastl::is_lvalue_assignable<char*, int*>::value            == false),  "is_lvalue_assignable failure");
-	static_assert((eastl::is_lvalue_assignable<char*, const char*>::value     == false),  "is_lvalue_assignable failure");
-	static_assert((eastl::is_lvalue_assignable<PodA, PodB*>::value            == false),  "is_lvalue_assignable failure");
-	static_assert((eastl::is_lvalue_assignable<Assignable, Pod2>::value       == false),  "is_lvalue_assignable failure");
-
-	#if EASTL_TYPE_TRAIT_is_lvalue_assignable_CONFORMANCE
-		// These might not succeed unless the implementation is conforming.
-		static_assert((eastl::is_lvalue_assignable<Assignable, Assignable>::value == true),  "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<Assignable, Pod1>::value       == true),  "is_lvalue_assignable failure");
-
-		// These cannot succeed unless the implementation is conforming.
-		static_assert((eastl::is_lvalue_assignable<void, void>::value             == false),  "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int, int>::value               == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int, const int>::value         == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<const int, int>::value         == false),  "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int, int&>::value              == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int64_t, int8_t>::value        == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<bool, bool>::value             == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<char*, char*>::value           == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<const char*, char*>::value     == true),   "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int[], int[]>::value           == false),  "is_lvalue_assignable failure");
-		static_assert((eastl::is_lvalue_assignable<int[3], int[3]>::value         == false),  "is_lvalue_assignable failure"); // Despite that you can memcpy these, C++ syntax doesn't all =-based assignment.
-
-		#if !defined(EA_COMPILER_EDG) // EDG (and only EDG) is issuing int8_t->double conversion warnings from the decltype expression inside this trait. That's probably a compiler bug, though we need to verify.
-			static_assert((eastl::is_lvalue_assignable<double, int8_t>::value     == true),   "is_lvalue_assignable failure"); // Sure this might generate a warning, but it's valid syntax.
-		#endif
 	#endif
 
 
@@ -1115,23 +1148,9 @@ int TestTypeTraits()
 	#endif
 
 
-	// is_array_of_known_bounds
-	// is_array_of_unknown_bounds
-	static_assert(is_array_of_known_bounds<void>::value        == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_known_bounds<int>::value         == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_known_bounds<PodA>::value        == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_known_bounds<int[3]>::value      == true,   "is_array_of_known_bounds failure");
-	static_assert(is_array_of_known_bounds<int[]>::value       == false,  "is_array_of_known_bounds failure");
-
-	static_assert(is_array_of_unknown_bounds<void>::value      == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_unknown_bounds<int>::value       == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_unknown_bounds<PodA>::value      == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_unknown_bounds<int[3]>::value    == false,  "is_array_of_known_bounds failure");
-	static_assert(is_array_of_unknown_bounds<int[]>::value     == true,   "is_array_of_known_bounds failure");
-
-
 	// is_trivially_copyable
 	static_assert(is_trivially_copyable<void>::value           == false,  "is_trivially_copyable failure");
+	EATEST_VERIFY(GetType(is_trivially_copyable<void>())	   == false);
 	static_assert(is_trivially_copyable<int>::value            == true,   "is_trivially_copyable failure");
 	static_assert(is_trivially_copyable<int*>::value           == true,   "is_trivially_copyable failure");
 	static_assert(is_trivially_copyable<int[]>::value          == true,   "is_trivially_copyable failure");
@@ -1142,6 +1161,21 @@ int TestTypeTraits()
 		static_assert(is_trivially_copyable<PodA>::value           == true,   "is_trivially_copyable failure");
 	#endif
 
+	{  // user reported regression
+		struct Foo
+		{
+			int a;
+			Foo(int i) : a(i) {}
+			Foo(Foo&& other) : a(other.a) { other.a = 0; }
+
+			Foo(const Foo&) = delete;
+			Foo& operator=(const Foo&) = delete;
+		};
+
+		static_assert(!eastl::is_trivially_copyable<Foo>::value, "is_trivially_copyable failure");
+	}
+
+
 	// is_trivially_copy_assignable
 	{
 		static_assert(is_trivially_copy_assignable<int>::value == true, "is_trivially_copy_assignable failure");
@@ -1149,61 +1183,14 @@ int TestTypeTraits()
 		static_assert(is_trivially_copy_assignable<const char*>::value == true, "is_trivially_copy_assignable failure");
 		static_assert(is_trivially_copy_assignable<NoTrivialCopy1>::value == false, "is_trivially_copy_assignable failure");
 
-#ifdef INTENTIONALLY_DISABLED
+	#ifdef INTENTIONALLY_DISABLED
 		// These tests currently fail on clang, but they would pass using the std::is_trivially_copy_assignable trait.  We should
 		// determine if our implementation is correct, or if clang is actually incorrect.
 		static_assert(is_trivially_copy_assignable<const int>::value == true, "is_trivially_copy_assignable failure");
 		static_assert(is_trivially_copy_assignable<const PodA>::value == true, "is_trivially_copy_assignable failure");
 		static_assert(is_trivially_copy_assignable<PodA>::value == true, "is_trivially_copy_assignable failure");
-#endif
-
-
-		// This relatively complex test is to prevent a regression on VS2013.  The data types have what may appear to be
-		// strange names (for test code) because the code is based on a test case extracted from the Frostbite codebase.
-		// This test is actually invalid and should be removed as const data memebers are problematic for STL container
-		// implementations. (ie.  they prevent constructors from being generated).
-		{
-			EA_DISABLE_VC_WARNING(4512) // disable warning : "assignment operator could not be generated"
-#if (defined(_MSC_VER) && (_MSC_VER >= 1900))  // VS2015-preview and later.
-			EA_DISABLE_VC_WARNING(5025) // disable warning : "move assignment operator could not be generated"
-			EA_DISABLE_VC_WARNING(4626) // disable warning : "assignment operator was implicitly defined as deleted"
-			EA_DISABLE_VC_WARNING(5027) // disable warning : "move assignment operator was implicitly defined as deleted"
-#endif
-
-			struct ScenarioRefEntry
-			{
-				ScenarioRefEntry(const eastl::string& contextDatabase) : ContextDatabase(contextDatabase) {}
-				struct RowEntry
-				{
-					RowEntry()
-						:Controller(gEmptyStringInstance)
-					{
-					}
-					const eastl::string& Controller;
-				};
-				const eastl::string& ContextDatabase;
-				eastl::vector<RowEntry> Rows;
-			};
-			typedef eastl::vector<ScenarioRefEntry> ScenarRefData;
-			struct AntMetaDataRecord
-			{
-				ScenarRefData ScenarioRefs;
-			};
-
-			typedef eastl::iterator_traits<eastl::generic_iterator<AntMetaDataRecord*, void> >::value_type value_type;
-			static_assert((eastl::is_trivially_copy_assignable<value_type>::value == false), "is_trivially_copy_assignable failure");
-
-			#if (defined(_MSC_VER) && (_MSC_VER >= 1900))  // VS2015-preview and later.
-				EA_RESTORE_VC_WARNING() // disable warning 5025:  "move assignment operator could not be generated"
-				EA_RESTORE_VC_WARNING() // disable warning 4626:  "assignment operator was implicitly defined as deleted"
-				EA_RESTORE_VC_WARNING() // disable warning 5027:  "move assignment operator was implicitly defined as deleted"
-			#endif
-			EA_RESTORE_VC_WARNING()
-		}
+	#endif
 	}
-
-
-
 	// is_trivially_default_constructible
 	// To do.
 
@@ -1217,6 +1204,7 @@ int TestTypeTraits()
 	static_assert(is_constructible<const void>::value     == false,  "is_constructible failure");
 	static_assert(is_constructible<int>::value            == true,   "is_constructible failure");
 	static_assert(is_constructible<int&>::value           == false,  "is_constructible failure");
+	static_assert(is_constructible<int&&>::value          == false,  "is_constructible failure");
 	static_assert(is_constructible<int*>::value           == true,   "is_constructible failure");
 	static_assert(is_constructible<int[]>::value          == false,  "is_constructible failure");
 	static_assert(is_constructible<int[4]>::value         == true,   "is_constructible failure");
@@ -1306,14 +1294,16 @@ int TestTypeTraits()
 
 	// is_destructible
 	static_assert(is_destructible<int>::value              == true,  "is_destructible failure");
+	static_assert(is_destructible<int&>::value             == true,  "is_destructible failure");
+	static_assert(is_destructible<int&&>::value            == true,  "is_destructible failure");
 	static_assert(is_destructible<char>::value             == true,  "is_destructible failure");
 	static_assert(is_destructible<char*>::value            == true,  "is_destructible failure");
 	static_assert(is_destructible<PodA>::value             == true,  "is_destructible failure");
 	static_assert(is_destructible<void>::value             == false, "is_destructible failure");
 	static_assert(is_destructible<int[3]>::value           == true,  "is_destructible failure");
 	static_assert(is_destructible<int[]>::value            == false, "is_destructible failure"); // You can't call operator delete on this class.
-	static_assert(is_destructible<Abstract>::value         == false, "is_destructible failure"); // You can't call operator delete on this class.
-	static_assert(is_destructible<AbstractWithDtor>::value == false, "is_destructible failure"); // You can't call operator delete on this class.
+	static_assert(is_destructible<Abstract>::value         == true, "is_destructible failure");
+	static_assert(is_destructible<AbstractWithDtor>::value == true, "is_destructible failure");
 	#if !defined(EA_COMPILER_NO_DELETED_FUNCTIONS)
 		static_assert(is_destructible<DeletedDtor>::value  == false, "is_destructible failure"); // You can't call operator delete on this class.
 	#endif
@@ -1322,6 +1312,8 @@ int TestTypeTraits()
 
 	// is_trivially_destructible
 	static_assert(is_trivially_destructible<int>::value                  == true,  "is_trivially_destructible failure");
+	static_assert(is_trivially_destructible<int&>::value                 == true,  "is_trivially_destructible failure");
+	static_assert(is_trivially_destructible<int&&>::value                == true,  "is_trivially_destructible failure");
 	static_assert(is_trivially_destructible<char>::value                 == true,  "is_trivially_destructible failure");
 	static_assert(is_trivially_destructible<char*>::value                == true,  "is_trivially_destructible failure");
 	static_assert(is_trivially_destructible<void>::value                 == false, "is_trivially_destructible failure");
@@ -1329,16 +1321,25 @@ int TestTypeTraits()
 		static_assert(is_trivially_destructible<PodA>::value             == true,  "is_trivially_destructible failure");
 		static_assert(is_trivially_destructible<int[3]>::value           == true,  "is_trivially_destructible failure");
 		static_assert(is_trivially_destructible<int[]>::value            == false, "is_trivially_destructible failure");
-		static_assert(is_trivially_destructible<Abstract>::value         == false, "is_trivially_destructible failure");
-		static_assert(is_trivially_destructible<AbstractWithDtor>::value == false, "is_trivially_destructible failure");
+		static_assert(is_trivially_destructible<Abstract>::value         == true, "is_trivially_destructible failure");
+		static_assert(is_trivially_destructible<AbstractWithDtor>::value == false, "is_trivially_destructible failure"); // Having a user-defined destructor make it non-trivial.
+	#if !defined(EA_COMPILER_NO_DELETED_FUNCTIONS)
 		static_assert(is_trivially_destructible<DeletedDtor>::value      == false, "is_trivially_destructible failure");
+	#endif
 		static_assert(is_trivially_destructible<NonPod2>::value          == false, "is_trivially_destructible failure");    // This case differs from is_destructible, because we have a declared destructor.
 	#endif
 
 
 	// is_nothrow_destructible
 	static_assert(is_nothrow_destructible<int>::value                      == true,  "is_nothrow_destructible failure");
+	static_assert(is_nothrow_destructible<int&>::value                     == true,  "is_nothrow_destructible failure");
+	static_assert(is_nothrow_destructible<int&&>::value                    == true,  "is_nothrow_destructible failure");
 	static_assert(is_nothrow_destructible<void>::value                     == false, "is_nothrow_destructible failure");
+	static_assert(is_nothrow_destructible<Abstract>::value         	       == true, "is_nothrow_destructible failure");
+	static_assert(is_nothrow_destructible<AbstractWithDtor>::value         == true, "is_nothrow_destructible failure");
+	#if !defined(EA_COMPILER_NO_DELETED_FUNCTIONS)
+		static_assert(is_nothrow_destructible<DeletedDtor>::value          == false, "is_nothrow_destructible failure"); // You can't call operator delete on this class.
+	#endif
 	#if EASTL_TYPE_TRAIT_is_nothrow_destructible_CONFORMANCE
 		static_assert(is_nothrow_destructible<NonPod2>::value              == true,  "is_nothrow_destructible failure"); // NonPod2 is nothrow destructible because it has an empty destructor (makes no calls) which has no exception specification. Thus its exception specification defaults to noexcept(true) [C++11 Standard, 15.4 paragraph 14]
 		static_assert(is_nothrow_destructible<NoThrowDestructible>::value  == true,  "is_nothrow_destructible failure");
@@ -1362,11 +1363,8 @@ int TestTypeTraits()
 	// common_type
 	static_assert((is_same<common_type<NonPod2*>::type, NonPod2*>::value), "common_type failure");
 	static_assert((is_same<common_type<int>::type, int>::value), "common_type failure");
-	#if EASTL_TYPE_TRAIT_common_type_CONFORMANCE
-		// The C++11 standard results in common_type<int, int> => int&&, but that's being revised for C++14 to be => int.
-		// http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3687.html#2141
-		//static_assert((is_same<common_type<int, int>::type, int&&>::value), "common_type failure");
-	#endif
+	static_assert((is_same<common_type<void, void>::type, void>::value), "common_type failure");
+	static_assert((is_same<common_type<int, int>::type, int>::value), "common_type failure");
 
 
 	// rank
@@ -1374,6 +1372,11 @@ int TestTypeTraits()
 	static_assert(rank<int[][1][2]>::value == 3,           "rank failure");
 	static_assert(rank<int>::value == 0,                   "rank failure");
 	static_assert(rank<void>::value == 0,                  "rank failure");
+
+	static_assert(rank_v<int[1][2][3][4][5][6]> == 6,      "rank failure");
+	static_assert(rank_v<int[][1][2]> == 3,                "rank failure");
+	static_assert(rank_v<int> == 0,                        "rank failure");
+	static_assert(rank_v<void> == 0,                       "rank failure");
 
 
 
@@ -1387,6 +1390,16 @@ int TestTypeTraits()
 	static_assert((extent<int[2], 1>   ::value == 0), "extent failure");
 	static_assert((extent<int[2][4], 1>::value == 4), "extent failure");
 	static_assert((extent<int[][4], 1> ::value == 4), "extent failure");
+
+	static_assert((extent_v<int>          == 0),      "extent failure");
+	static_assert((extent_v<int[2]>       == 2),      "extent failure");
+	static_assert((extent_v<int[2][4]>    == 2),      "extent failure");
+	static_assert((extent_v<int[]>        == 0),      "extent failure");
+	static_assert((extent_v<int[][4]>     == 0),      "extent failure");
+	static_assert((extent_v<int, 1>       == 0),      "extent failure");
+	static_assert((extent_v<int[2], 1>    == 0),      "extent failure");
+	static_assert((extent_v<int[2][4], 1> == 4),      "extent failure");
+	static_assert((extent_v<int[][4], 1>  == 4),      "extent failure");
 
 
 
@@ -1406,18 +1419,16 @@ int TestTypeTraits()
 	static_assert(is_aligned<uint64_t>::value == false,  "is_aligned failure");
 	EATEST_VERIFY(GetType(is_aligned<uint64_t>()) == false);
 
-	{
-		#if (kEASTLTestAlign16 == 16) // To do: Rename kEASTLTestAlign16, as what it really means is "is 16 byte alignment+ supported".
-			static_assert(is_aligned<Align16>::value,  "is_aligned failure");
-			EATEST_VERIFY(GetType(is_aligned<Align16>()));
+	{ // alignment tests
+		static_assert(is_aligned<Align16>::value, "is_aligned failure");
+		EATEST_VERIFY(GetType(is_aligned<Align16>()));
 
 
-			static_assert(is_aligned<Align32>::value,  "is_aligned failure");
-			EATEST_VERIFY(GetType(is_aligned<Align32>()));
+		static_assert(is_aligned<Align32>::value, "is_aligned failure");
+		EATEST_VERIFY(GetType(is_aligned<Align32>()));
 
-			static_assert(is_aligned<Align64>::value,  "is_aligned failure");
-			EATEST_VERIFY(GetType(is_aligned<Align64>()));
-		#endif
+		static_assert(is_aligned<Align64>::value, "is_aligned failure");
+		EATEST_VERIFY(GetType(is_aligned<Align64>()));
 	}
 
 
@@ -1430,15 +1441,13 @@ int TestTypeTraits()
 	static_assert((is_same<uint64_t, uint32_t>::value  == false), "is_same failure");
 	static_assert((is_same<Class, ClassAlign32>::value == false), "is_same failure");
 
-	#if EASTL_VARIABLE_TEMPLATES_ENABLED
-		static_assert((is_same_v<uint32_t, uint32_t>  == true),  "is_same_v failure");
-		static_assert((is_same_v<void, void>          == true),  "is_same_v failure");
-		static_assert((is_same_v<void*, void*>        == true),  "is_same_v failure");
-		static_assert((is_same_v<uint64_t, uint64_t>  == true),  "is_same_v failure");
-		static_assert((is_same_v<Class, Class>        == true),  "is_same_v failure");
-		static_assert((is_same_v<uint64_t, uint32_t>  == false), "is_same_v failure");
-		static_assert((is_same_v<Class, ClassAlign32> == false), "is_same_v failure");
-	#endif
+	static_assert((is_same_v<uint32_t, uint32_t>  == true),       "is_same_v failure");
+	static_assert((is_same_v<void, void>          == true),       "is_same_v failure");
+	static_assert((is_same_v<void*, void*>        == true),       "is_same_v failure");
+	static_assert((is_same_v<uint64_t, uint64_t>  == true),       "is_same_v failure");
+	static_assert((is_same_v<Class, Class>        == true),       "is_same_v failure");
+	static_assert((is_same_v<uint64_t, uint32_t>  == false),      "is_same_v failure");
+	static_assert((is_same_v<Class, ClassAlign32> == false),      "is_same_v failure");
 
 
 
@@ -1454,10 +1463,6 @@ int TestTypeTraits()
 	#if EASTL_TYPE_TRAIT_is_convertible_CONFORMANCE // This causes compile failures.
 	static_assert((is_convertible<IsConvertibleTest1, IsConvertibleTest1>::value == false),    "is_convertible failure");
 	#endif
-
-	// Test EASTL_DECLARE_TRIVIAL_ASSIGN(HiddenAssign);
-	eastl::vector<HiddenAssign> v;
-	EATEST_VERIFY(v.empty());
 
 
 	// make_signed
@@ -1504,6 +1509,125 @@ int TestTypeTraits()
 		EATEST_VERIFY(u64 == UINT64_C(0xffffffffffffffff));
 		i64 = static_cast<eastl::make_signed<int64_t>::type>(u64);
 		EATEST_VERIFY(i64 == -1);
+
+
+		static_assert(eastl::is_same_v<signed char, eastl::make_signed<unsigned char>::type>);
+		static_assert(eastl::is_same_v<short, eastl::make_signed<unsigned short>::type>);
+		static_assert(eastl::is_same_v<int, eastl::make_signed<unsigned int>::type>);
+		static_assert(eastl::is_same_v<long, eastl::make_signed<unsigned long>::type>);
+		static_assert(eastl::is_same_v<long long, eastl::make_signed<unsigned long long>::type>);
+
+		static_assert(eastl::is_same_v<const signed char, eastl::make_signed<const unsigned char>::type>);
+		static_assert(eastl::is_same_v<const short, eastl::make_signed<const unsigned short>::type>);
+		static_assert(eastl::is_same_v<const int, eastl::make_signed<const unsigned int>::type>);
+		static_assert(eastl::is_same_v<const long, eastl::make_signed<const unsigned long>::type>);
+		static_assert(eastl::is_same_v<const long long, eastl::make_signed<const unsigned long long>::type>);
+
+		static_assert(eastl::is_same_v<volatile signed char, eastl::make_signed<volatile unsigned char>::type>);
+		static_assert(eastl::is_same_v<volatile short, eastl::make_signed<volatile unsigned short>::type>);
+		static_assert(eastl::is_same_v<volatile int, eastl::make_signed<volatile unsigned int>::type>);
+		static_assert(eastl::is_same_v<volatile long, eastl::make_signed<volatile unsigned long>::type>);
+		static_assert(eastl::is_same_v<volatile long long, eastl::make_signed<volatile unsigned long long>::type>);
+
+		static_assert(eastl::is_same_v<const volatile signed char, eastl::make_signed<const volatile unsigned char>::type>);
+		static_assert(eastl::is_same_v<const volatile short, eastl::make_signed<const volatile unsigned short>::type>);
+		static_assert(eastl::is_same_v<const volatile int, eastl::make_signed<const volatile unsigned int>::type>);
+		static_assert(eastl::is_same_v<const volatile long, eastl::make_signed<const volatile unsigned long>::type>);
+		static_assert(eastl::is_same_v<const volatile long long, eastl::make_signed<const volatile unsigned long long>::type>);
+
+		static_assert(eastl::is_same_v<unsigned char, eastl::make_unsigned<signed char>::type>);
+		static_assert(eastl::is_same_v<unsigned short, eastl::make_unsigned<short>::type>);
+		static_assert(eastl::is_same_v<unsigned int, eastl::make_unsigned<int>::type>);
+		static_assert(eastl::is_same_v<unsigned long, eastl::make_unsigned<long>::type>);
+		static_assert(eastl::is_same_v<unsigned long long, eastl::make_unsigned<long long>::type>);
+
+		static_assert(eastl::is_same_v<const unsigned char, eastl::make_unsigned<const signed char>::type>);
+		static_assert(eastl::is_same_v<const unsigned short, eastl::make_unsigned<const short>::type>);
+		static_assert(eastl::is_same_v<const unsigned int, eastl::make_unsigned<const int>::type>);
+		static_assert(eastl::is_same_v<const unsigned long, eastl::make_unsigned<const long>::type>);
+		static_assert(eastl::is_same_v<const unsigned long long, eastl::make_unsigned<const long long>::type>);
+
+		static_assert(eastl::is_same_v<volatile unsigned char, eastl::make_unsigned<volatile signed char>::type>);
+		static_assert(eastl::is_same_v<volatile unsigned short, eastl::make_unsigned<volatile short>::type>);
+		static_assert(eastl::is_same_v<volatile unsigned int, eastl::make_unsigned<volatile int>::type>);
+		static_assert(eastl::is_same_v<volatile unsigned long, eastl::make_unsigned<volatile long>::type>);
+		static_assert(eastl::is_same_v<volatile unsigned long long, eastl::make_unsigned<volatile long long>::type>);
+
+		static_assert(eastl::is_same_v<const volatile unsigned char, eastl::make_unsigned<const volatile signed char>::type>);
+		static_assert(eastl::is_same_v<const volatile unsigned short, eastl::make_unsigned<const volatile short>::type>);
+		static_assert(eastl::is_same_v<const volatile unsigned int, eastl::make_unsigned<const volatile int>::type>);
+		static_assert(eastl::is_same_v<const volatile unsigned long, eastl::make_unsigned<const volatile long>::type>);
+		static_assert(eastl::is_same_v<const volatile unsigned long long, eastl::make_unsigned<const volatile long long>::type>);
+
+		static_assert(eastl::is_same_v<signed char, eastl::make_signed<signed char>::type>);
+		static_assert(eastl::is_same_v<short, eastl::make_signed<signed short>::type>);
+		static_assert(eastl::is_same_v<int, eastl::make_signed<signed int>::type>);
+		static_assert(eastl::is_same_v<long, eastl::make_signed<signed long>::type>);
+		static_assert(eastl::is_same_v<long long, eastl::make_signed<signed long long>::type>);
+
+		static_assert(eastl::is_same_v<unsigned char, eastl::make_unsigned<unsigned char>::type>);
+		static_assert(eastl::is_same_v<unsigned short, eastl::make_unsigned<unsigned short>::type>);
+		static_assert(eastl::is_same_v<unsigned int, eastl::make_unsigned<unsigned int>::type>);
+		static_assert(eastl::is_same_v<unsigned long, eastl::make_unsigned<unsigned long>::type>);
+		static_assert(eastl::is_same_v<unsigned long long, eastl::make_unsigned<unsigned long long>::type>);
+
+		#if EASTL_GCC_STYLE_INT128_SUPPORTED
+			static_assert(eastl::is_same_v<__uint128_t, eastl::make_unsigned<__int128_t>::type>);
+			static_assert(eastl::is_same_v<__uint128_t, eastl::make_unsigned<__uint128_t>::type>);
+
+			static_assert(eastl::is_same_v<__int128_t, eastl::make_signed<__int128_t>::type>);
+			static_assert(eastl::is_same_v<__int128_t, eastl::make_signed<__uint128_t>::type>);
+		#endif
+
+		// Char tests
+		static_assert(sizeof(char) == sizeof(eastl::make_signed<char>::type));
+		static_assert(sizeof(wchar_t) == sizeof(eastl::make_signed<wchar_t>::type));
+		static_assert(sizeof(char8_t) == sizeof(eastl::make_signed<char8_t>::type));
+		static_assert(sizeof(char16_t) == sizeof(eastl::make_signed<char16_t>::type));
+		static_assert(sizeof(char32_t) == sizeof(eastl::make_signed<char32_t>::type));
+		static_assert(sizeof(char) == sizeof(eastl::make_unsigned<char>::type));
+		static_assert(sizeof(wchar_t) == sizeof(eastl::make_unsigned<wchar_t>::type));
+		static_assert(sizeof(char8_t) == sizeof(eastl::make_unsigned<char8_t>::type));
+		static_assert(sizeof(char16_t) == sizeof(eastl::make_unsigned<char16_t>::type));
+		static_assert(sizeof(char32_t) == sizeof(eastl::make_unsigned<char32_t>::type));
+
+		static_assert(eastl::is_same_v<signed char, eastl::make_signed<char8_t>::type>);
+		static_assert(eastl::is_same_v<unsigned char, eastl::make_unsigned<char8_t>::type>);
+
+		// Enum tests
+		enum EnumUCharSize : unsigned char		{};
+		enum EnumUShortSize : unsigned short	{};
+		enum EnumUIntSize : unsigned int		{};
+		enum EnumULongSize : unsigned long {};
+		enum EnumULongLongSize : unsigned long long		{};
+
+		static_assert(eastl::is_signed_v<eastl::make_signed<EnumUCharSize>::type>);
+		static_assert(eastl::is_signed_v<eastl::make_signed<EnumUShortSize>::type>);
+		static_assert(eastl::is_signed_v<eastl::make_signed<EnumUIntSize>::type>);
+		static_assert(eastl::is_signed_v<eastl::make_signed<EnumULongSize>::type>);
+		static_assert(eastl::is_signed_v<eastl::make_signed<EnumULongLongSize>::type>);
+		static_assert(sizeof(EnumUCharSize) == sizeof(eastl::make_signed<EnumUCharSize>::type));
+		static_assert(sizeof(EnumUShortSize) == sizeof(eastl::make_signed<EnumUShortSize>::type));
+		static_assert(sizeof(EnumUIntSize) == sizeof(eastl::make_signed<EnumUIntSize>::type));
+		static_assert(sizeof(EnumULongSize) == sizeof(eastl::make_signed<EnumULongSize>::type));
+		static_assert(sizeof(EnumULongLongSize) == sizeof(eastl::make_signed<EnumULongLongSize>::type));
+
+		enum EnumCharSize : signed char	{};
+		enum EnumShortSize : short		{};
+		enum EnumIntSize : int			{};
+		enum EnumLongSize : long			{};
+		enum EnumLongLongSize : long long	{};
+
+		static_assert(eastl::is_unsigned_v<eastl::make_unsigned<EnumCharSize>::type>);
+		static_assert(eastl::is_unsigned_v<eastl::make_unsigned<EnumShortSize>::type>);
+		static_assert(eastl::is_unsigned_v<eastl::make_unsigned<EnumIntSize>::type>);
+		static_assert(eastl::is_unsigned_v<eastl::make_unsigned<EnumLongSize>::type>);
+		static_assert(eastl::is_unsigned_v<eastl::make_unsigned<EnumLongLongSize>::type>);
+		static_assert(sizeof(EnumCharSize) == sizeof(eastl::make_unsigned<EnumCharSize>::type));
+		static_assert(sizeof(EnumShortSize) == sizeof(eastl::make_unsigned<EnumShortSize>::type));
+		static_assert(sizeof(EnumIntSize) == sizeof(eastl::make_unsigned<EnumIntSize>::type));
+		static_assert(sizeof(EnumLongSize) == sizeof(eastl::make_unsigned<EnumLongSize>::type));
+		static_assert(sizeof(EnumLongLongSize) == sizeof(eastl::make_unsigned<EnumLongLongSize>::type));
 	}
 
 	// remove_const
@@ -1523,6 +1647,42 @@ int TestTypeTraits()
 		//static_assert(is_same<std::remove_cv<int (int, ...)>::type , std::remove_cv<int (int, ...) const>::type>::value, "remove_cv failure");
 	}
 
+	// remove_cvref
+	{
+		static_assert(is_same_v<remove_cvref_t<int>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int&>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int&&>, int>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<const int>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const int&>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const int&&>, int>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<volatile int>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<volatile int&>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<volatile int&&>, int>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<const volatile int>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const volatile int&>, int>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const volatile int&&>, int>, "remove_cvref failure");
+
+		// test pointer types
+		static_assert(is_same_v<remove_cvref_t<int*>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int*&>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int*&&>, int*>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<const int*>, const int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const int*&>, const int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<const int*&&>, const int*>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<int* const>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int* const&>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int* const&&>, int*>, "remove_cvref failure");
+
+		static_assert(is_same_v<remove_cvref_t<int* const volatile>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int* const volatile&>, int*>, "remove_cvref failure");
+		static_assert(is_same_v<remove_cvref_t<int* const volatile&&>, int*>, "remove_cvref failure");
+	}
+
 
 	// add_const
 	// add_volatile
@@ -1532,10 +1692,11 @@ int TestTypeTraits()
 		eastl::add_const<int32_t>::type i32 = 47;
 		EATEST_VERIFY(i32 == 47);
 
-		eastl::add_volatile<volatile int16_t>::type i16 = 47;
-		EATEST_VERIFY(++i16 == 48);
+		// C++20 deprecated a lot of volatile operations
+		eastl::add_volatile<int16_t>::type i16 = 47;
+		EATEST_VERIFY(i16 + 1 == 48);
 
-		eastl::add_cv<const volatile int32_t>::type i64 = 47;
+		eastl::add_cv<int32_t>::type i64 = 47;
 		EATEST_VERIFY(i64 == 47);
 	}
 
@@ -1557,16 +1718,12 @@ int TestTypeTraits()
 
 
 	// remove_reference
-	// add_reference
 	// remove_pointer
 	// add_pointer
 	// remove_extent
 	// remove_all_extents
 	{
-		int x = 17;
-		eastl::add_reference<int>::type xRef = x;
-		x++;
-		EATEST_VERIFY(xRef == 18);
+		int x = 18;
 
 		eastl::remove_reference<int&>::type xValue;
 		xValue = 3;
@@ -1580,6 +1737,28 @@ int TestTypeTraits()
 		yValue = 3;
 		EATEST_VERIFY(yValue == 3);
 
+		// ref to T
+		//   -> T*
+		static_assert(is_same_v<add_pointer_t<int&>, int*>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<int(&)()>, int(*)()>, "add_pointer failure");
+
+		// object type (a (possibly cv-qualified) type other than function type, reference type or void), or
+		// a function type that is not cv- or ref-qualified, or a (possibly cv-qualified) void type
+		//   -> T*
+		static_assert(is_same_v<add_pointer_t<int>, int*>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<int*>, int**>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<int()>, int(*)()>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<void>, void*>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<const void>, const void*>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<volatile void>, volatile void*>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<const volatile void>, const volatile void*>, "add_pointer failure");
+
+		// otherwise (cv- or ref-qualified function type)
+		//   -> T
+		static_assert(is_same_v<add_pointer_t<int() const>, int() const>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<int() volatile>, int() volatile>, "add_pointer failure");
+		static_assert(is_same_v<add_pointer_t<int() const volatile>, int() const volatile>, "add_pointer failure");
+
 		// remove_extent
 		// If T is an array of some type X, provides the member typedef type equal to X, otherwise 
 		// type is T. Note that if T is a multidimensional array, only the first dimension is removed. 
@@ -1591,6 +1770,55 @@ int TestTypeTraits()
 		typedef int IntArray2[37][54];
 		typedef eastl::remove_all_extents<IntArray2>::type Int2;
 		static_assert((eastl::is_same<Int2, int>::value == true), "remove_all_extents/is_same failure");
+	}
+
+	// add_lvalue_reference
+	{
+		// function type with no cv- or ref-qualifier
+		//   -> T&
+		static_assert(is_same_v<add_lvalue_reference_t<void()>, void(&)()>, "add_lvalue_reference failure");
+
+		// object type (a (possibly cv-qualified) type other than function type, reference type or void)
+		//   -> T&
+		static_assert(is_same_v<add_lvalue_reference_t<int>, int&>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<const int>, const int&>, "add_lvalue_reference failure");
+
+		// if T is an rvalue reference (to some type U)
+		//   -> U&
+		static_assert(is_same_v<add_lvalue_reference_t<int&&>, int&>, "add_lvalue_reference failure");
+
+		// otherwise (cv- or ref-qualified function type, or reference type, or (possibly cv-qualified) void)
+		//   -> T
+		static_assert(is_same_v<add_lvalue_reference_t<void() const>, void() const>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<void()&>, void()&>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<void()&&>, void()&&>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<int&>, int&>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<const int&>, const int&>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<void>, void>, "add_lvalue_reference failure");
+		static_assert(is_same_v<add_lvalue_reference_t<const void>, const void>, "add_lvalue_reference failure");
+	}
+
+	// add_rvalue_reference
+	{
+		// function type with no cv- or ref-qualifier
+		//   -> T&&
+		static_assert(is_same_v<add_rvalue_reference_t<void()>, void(&&)()>, "add_rvalue_reference failure");
+
+		// object type (a (possibly cv-qualified) type other than function type, reference type or void)
+		//   -> T&&
+		static_assert(is_same_v<add_rvalue_reference_t<int>, int&&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<const int>, const int&&>, "add_rvalue_reference failure");
+
+		// otherwise (cv- or ref-qualified function type, or reference type, or (possibly cv-qualified) void)
+		//   -> T
+		static_assert(is_same_v<add_rvalue_reference_t<void() const>, void() const>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<void()&>, void()&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<void()&&>, void()&&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<int&>, int&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<int&&>, int&&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<const int&>, const int&>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<void>, void>, "add_rvalue_reference failure");
+		static_assert(is_same_v<add_rvalue_reference_t<const void>, const void>, "add_rvalue_reference failure");
 	}
 
 
@@ -1722,36 +1950,278 @@ int TestTypeTraits()
 		PodB*  pB    = union_cast<PodB*>(pA);
 		PodA*  pANew = union_cast<PodA*>(pB);
 		EATEST_VERIFY(pA == pANew);
+		delete pA;
 	}
 
 	// void_t
-	#if EASTL_VARIABLE_TEMPLATES_ENABLED
 	{
 		{
-			static_assert(is_same_v<void_t<void>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<int>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<short>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<long>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<long long>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<ClassEmpty>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<ClassNonEmpty>, void>, "void_t failure");
-			static_assert(is_same_v<void_t<vector<int>>, void>, "void_t failure");
+			static_assert(is_same<void_t<void>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<int>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<short>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<long>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<long long>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<ClassEmpty>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<ClassNonEmpty>, void>::value, "void_t failure");
+			static_assert(is_same<void_t<vector<int>>, void>::value, "void_t failure");
 		}
 
 		// new sfinae mechansim test 
 		{
-			static_assert(has_increment_operator<HasIncrementOperator>::value, "void_t sfinae failure");
-			static_assert(!has_increment_operator<ClassEmpty>::value, "void_t sfinae failure");
+			static_assert(has_increment_operator_using_void_t<HasIncrementOperator>::value, "void_t sfinae failure");
+			static_assert(!has_increment_operator_using_void_t<ClassEmpty>::value, "void_t sfinae failure");
+		}
+	}
+
+	// detected idiom
+	{
+		static_assert(is_detected<has_increment_operator_detection, HasIncrementOperator>::value, "is_detected failure.");
+		static_assert(!is_detected<has_increment_operator_detection, ClassEmpty>::value, "is_detected failure.");
+
+		static_assert(is_same<detected_t<has_increment_operator_detection, HasIncrementOperator>, HasIncrementOperator&>::value, "is_detected_t failure.");
+		static_assert(is_same<detected_t<has_increment_operator_detection, ClassEmpty>, nonesuch>::value, "is_detected_t failure.");
+
+		using detected_or_positive_result = detected_or<float, has_increment_operator_detection, HasIncrementOperator>;
+		using detected_or_negative_result = detected_or<float, has_increment_operator_detection, ClassEmpty>;
+		static_assert(detected_or_positive_result::value_t::value, "detected_or failure.");
+		static_assert(!detected_or_negative_result::value_t::value, "detected_or failure.");
+		static_assert(is_same<detected_or_positive_result::type, HasIncrementOperator&>::value, "detected_or failure.");
+		static_assert(is_same<detected_or_negative_result::type, float>::value, "detected_or failure.");
+
+		static_assert(is_same<detected_or_t<float, has_increment_operator_detection, HasIncrementOperator>, HasIncrementOperator&>::value, "detected_or_t failure.");
+		static_assert(is_same<detected_or_t<float, has_increment_operator_detection, ClassEmpty>, float>::value, "detected_or_t failure.");
+
+		static_assert(is_detected_exact<HasIncrementOperator&, has_increment_operator_detection, HasIncrementOperator>::value, "is_detected_exact failure.");
+		static_assert(!is_detected_exact<float, has_increment_operator_detection, HasIncrementOperator>::value, "is_detected_exact failure.");
+		static_assert(is_detected_exact<nonesuch, has_increment_operator_detection, ClassEmpty>::value, "is_detected_exact failure.");
+		static_assert(!is_detected_exact<float, has_increment_operator_detection, ClassEmpty>::value, "is_detected_exact failure.");
+
+		static_assert(is_detected_convertible<HasIncrementOperator&, has_increment_operator_detection, HasIncrementOperator>::value, "is_detected_convertible failure.");
+		static_assert(is_detected_convertible<HasIncrementOperator, has_increment_operator_detection, HasIncrementOperator>::value, "is_detected_convertible failure.");
+		static_assert(!is_detected_convertible<float, has_increment_operator_detection, HasIncrementOperator>::value, "is_detected_convertible failure.");
+		static_assert(!is_detected_convertible<nonesuch, has_increment_operator_detection, ClassEmpty>::value, "is_detected_convertible failure.");
+		static_assert(!is_detected_convertible<float, has_increment_operator_detection, ClassEmpty>::value, "is_detected_convertible failure.");
+
+
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		static_assert(is_detected_v<has_increment_operator_detection, HasIncrementOperator>, "is_detected_v failure.");
+		static_assert(!is_detected_v<has_increment_operator_detection, ClassEmpty>, "is_detected_v failure.");
+
+		static_assert(is_detected_exact_v<HasIncrementOperator&, has_increment_operator_detection, HasIncrementOperator>, "is_detected_exact_v failure.");
+		static_assert(!is_detected_exact_v<float, has_increment_operator_detection, HasIncrementOperator>, "is_detected_exact_v failure.");
+		static_assert(is_detected_exact_v<nonesuch, has_increment_operator_detection, ClassEmpty>, "is_detected_exact_v failure.");
+		static_assert(!is_detected_exact_v<float, has_increment_operator_detection, ClassEmpty>, "is_detected_exact_v failure.");
+
+		static_assert(is_detected_convertible_v<HasIncrementOperator&, has_increment_operator_detection, HasIncrementOperator>, "is_detected_convertible_v failure.");
+		static_assert(is_detected_convertible_v<HasIncrementOperator, has_increment_operator_detection, HasIncrementOperator>, "is_detected_convertible_v failure.");
+		static_assert(!is_detected_convertible_v<float, has_increment_operator_detection, HasIncrementOperator>, "is_detected_convertible_v failure.");
+		static_assert(!is_detected_convertible_v<nonesuch, has_increment_operator_detection, ClassEmpty>, "is_detected_convertible_v failure.");
+		static_assert(!is_detected_convertible_v<float, has_increment_operator_detection, ClassEmpty>, "is_detected_convertible_v failure.");
+	#endif
+	}
+
+	// conjunction
+	{
+		static_assert( conjunction<>::value, "conjunction failure");
+		static_assert(!conjunction<false_type>::value, "conjunction failure");
+		static_assert(!conjunction<false_type, false_type>::value, "conjunction failure");
+		static_assert(!conjunction<false_type, false_type, false_type>::value, "conjunction failure");
+		static_assert(!conjunction<false_type, false_type, false_type, true_type>::value, "conjunction failure");
+		static_assert(!conjunction<false_type, false_type, true_type, true_type>::value, "conjunction failure");
+		static_assert(!conjunction<false_type, true_type, true_type, true_type>::value, "conjunction failure");
+		static_assert(!conjunction<true_type, true_type, true_type, true_type, false_type>::value, "conjunction failure");
+		static_assert(!conjunction<true_type, false_type, true_type, true_type, true_type>::value, "conjunction failure");
+		static_assert( conjunction<true_type, true_type, true_type, true_type, true_type>::value, "conjunction failure");
+		static_assert( conjunction<true_type, true_type, true_type, true_type>::value, "conjunction failure");
+		static_assert( conjunction<true_type, true_type, true_type>::value, "conjunction failure");
+		static_assert( conjunction<true_type>::value, "conjunction failure");
+
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		static_assert( conjunction_v<>, "conjunction failure");
+		static_assert(!conjunction_v<false_type>, "conjunction failure");
+		static_assert(!conjunction_v<false_type, false_type>, "conjunction failure");
+		static_assert(!conjunction_v<false_type, false_type, false_type>, "conjunction failure");
+		static_assert(!conjunction_v<false_type, false_type, false_type, true_type>, "conjunction failure");
+		static_assert(!conjunction_v<false_type, false_type, true_type, true_type>, "conjunction failure");
+		static_assert(!conjunction_v<false_type, true_type, true_type, true_type>, "conjunction failure");
+		static_assert(!conjunction_v<true_type, true_type, true_type, true_type, false_type>, "conjunction failure");
+		static_assert(!conjunction_v<true_type, false_type, true_type, true_type, true_type>, "conjunction failure");
+		static_assert( conjunction_v<true_type, true_type, true_type, true_type, true_type>, "conjunction failure");
+		static_assert( conjunction_v<true_type, true_type, true_type, true_type>, "conjunction failure");
+		static_assert( conjunction_v<true_type, true_type, true_type>, "conjunction failure");
+		static_assert( conjunction_v<true_type>, "conjunction failure");
+	#endif
+	}
+	
+	// disjunction
+	{
+		static_assert(!disjunction<>::value, "disjunction failure");
+		static_assert(!disjunction<false_type>::value, "disjunction failure");
+		static_assert(!disjunction<false_type, false_type>::value, "disjunction failure");
+		static_assert(!disjunction<false_type, false_type, false_type>::value, "disjunction failure");
+		static_assert( disjunction<false_type, false_type, false_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<false_type, false_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<false_type, true_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type, true_type, true_type, true_type, false_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type, false_type, true_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type, true_type, true_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type, true_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type, true_type, true_type>::value, "disjunction failure");
+		static_assert( disjunction<true_type>::value, "disjunction failure");
+
+	#if EASTL_VARIABLE_TEMPLATES_ENABLED
+		static_assert(!disjunction_v<>, "disjunction failure");
+		static_assert(!disjunction_v<false_type>, "disjunction failure");
+		static_assert(!disjunction_v<false_type, false_type>, "disjunction failure");
+		static_assert(!disjunction_v<false_type, false_type, false_type>, "disjunction failure");
+		static_assert( disjunction_v<false_type, false_type, false_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<false_type, false_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<false_type, true_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type, true_type, true_type, true_type, false_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type, false_type, true_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type, true_type, true_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type, true_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type, true_type, true_type>, "disjunction failure");
+		static_assert( disjunction_v<true_type>, "disjunction failure");
+	#endif
+	}
+
+	// negation
+	{
+		static_assert( negation<false_type>::value, "negation failure");
+		static_assert(!negation<true_type>::value, "negation failure");
+
+		#if EASTL_VARIABLE_TEMPLATES_ENABLED
+			static_assert( negation_v<false_type>, "negation failure");
+			static_assert(!negation_v<true_type>, "negation failure");
+		#endif
+	}
+
+	// has_unique_object_representations
+	{
+		static_assert( has_unique_object_representations<bool>::value,               "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<char16_t>::value,           "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<char32_t>::value,           "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<char>::value,               "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<int>::value,                "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<long long>::value,          "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<long>::value,               "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<short>::value,              "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<signed char>::value,        "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<unsigned char>::value,      "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<unsigned int>::value,       "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<unsigned long long>::value, "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<unsigned long>::value,      "has_unique_object_representations failure");
+		static_assert( has_unique_object_representations<unsigned short>::value,     "has_unique_object_representations failure");
+		static_assert(!has_unique_object_representations<void>::value,               "has_unique_object_representations failure");
+#ifndef EA_WCHAR_T_NON_NATIVE // If wchar_t is a native type instead of simply a define to an existing type which is already handled...
+		static_assert( has_unique_object_representations<wchar_t>::value,            "has_unique_object_representations failure");
+#endif
+
+	#if EASTL_TYPE_TRAIT_has_unique_object_representations_CONFORMANCE
+		{
+			struct packed_type { int a; };
+			static_assert( has_unique_object_representations<packed_type>::value, "has_unique_object_representations failure");
+
+			struct padded_type { int a; char b; int c; };
+			static_assert(!has_unique_object_representations<padded_type>::value, "has_unique_object_representations failure");
+		}
+	#endif
+	}
+	
+	// is_final
+	{
+	#if (EA_COMPILER_HAS_FEATURE(is_final))
+		static_assert(std::is_final<FinalStruct>::value == eastl::is_final<FinalStruct>::value,  "final struct not correctly detected");
+		static_assert(std::is_final<FinalClass>::value  == eastl::is_final<FinalClass>::value,   "final class not correctly detected");
+		static_assert(std::is_final<Enum>::value        == eastl::is_final<Enum>::value,         "enum not correctly detected");
+		static_assert(std::is_final<int>::value         == eastl::is_final<int>::value,          "int not correctly detected");
+		static_assert(std::is_final<Struct>::value      == eastl::is_final<Struct>::value,       "non-final struct not correctly detected");
+		static_assert(std::is_final<Class>::value       == eastl::is_final<Class>::value,        "non-final class not correctly detected");
+    #endif
+
+	// endian (big-endian and little; no mixed-endian/middle-endian)
+	static_assert(eastl::endian::big != eastl::endian::little, "little-endian and big-endian are not the same");
+	static_assert(eastl::endian::native == eastl::endian::big || eastl::endian::native == eastl::endian::little, "native may be little endian or big endian");
+	static_assert(!(eastl::endian::native == eastl::endian::big && eastl::endian::native == eastl::endian::little), "native cannot be both big and little endian");
+
+	#ifdef EA_SYSTEM_LITTLE_ENDIAN
+		static_assert(eastl::endian::native == eastl::endian::little,  "must be little endian");
+		static_assert(eastl::endian::native != eastl::endian::big,     "must not be big endian");
+	#else
+		static_assert(eastl::endian::native != eastl::endian::little,  "must not be little endian");
+		static_assert(eastl::endian::native == eastl::endian::big,     "must be big endian");
+	#endif
+	}
+
+	// has_equality
+	{
+		static_assert( has_equality_v<int>, "has_equality failure");
+		static_assert( has_equality_v<short>, "has_equality failure");
+		static_assert( has_equality_v<long>, "has_equality failure");
+		static_assert( has_equality_v<long long>, "has_equality failure");
+		static_assert( has_equality_v<TestObject>, "has_equality failure");
+		static_assert(!has_equality_v<MissingEquality>, "has_equality failure");
+	}
+
+	// is_aggregate
+	#if EASTL_TYPE_TRAIT_is_aggregate_CONFORMANCE
+	{
+		static_assert(!is_aggregate_v<int>, "is_aggregate failure");
+		static_assert( is_aggregate_v<int[]>, "is_aggregate failure");
+
+		{
+			struct Aggregrate {};
+			static_assert(is_aggregate_v<Aggregrate>, "is_aggregate failure");
+		}
+
+		{
+			struct NotAggregrate { NotAggregrate() {} }; // user provided ctor
+			static_assert(!is_aggregate_v<NotAggregrate>, "is_aggregate failure");
+		}
+
+		#if defined(EA_COMPILER_CPP11_ENABLED) && !defined(EA_COMPILER_CPP14_ENABLED)
+		// See https://en.cppreference.com/w/cpp/language/aggregate_initialization
+		// In C++11 the requirement was added to aggregate types that no default member initializers exist,
+		// however this requirement was removed in C++14.
+		{
+			struct NotAggregrate { int data = 42; }; // default member initializer 
+			static_assert(!is_aggregate_v<NotAggregrate>, "is_aggregate failure");
+		}
+		#endif
+
+		{
+			struct NotAggregrate { virtual void foo() {} }; // virtual member function
+			static_assert(!is_aggregate_v<NotAggregrate>, "is_aggregate failure");
 		}
 	}
 	#endif
 
+	// is_complete_type
+	{
+		struct Foo
+		{
+			int x;
+		};
+
+		struct FooEmpty
+		{
+		};
+
+		struct Bar;
+
+		void FooFunc();
+
+		static_assert(eastl::internal::is_complete_type_v<Foo>, "is_complete_type failure");
+		static_assert(eastl::internal::is_complete_type_v<FooEmpty>, "is_complete_type failure");
+		static_assert(!eastl::internal::is_complete_type_v<Bar>, "is_complete_type failure");
+		static_assert(!eastl::internal::is_complete_type_v<void>, "is_complete_type failure");
+		static_assert(!eastl::internal::is_complete_type_v<volatile void>, "is_complete_type failure");
+		static_assert(!eastl::internal::is_complete_type_v<const void>, "is_complete_type failure");
+		static_assert(!eastl::internal::is_complete_type_v<const volatile void>, "is_complete_type failure");
+		static_assert(eastl::internal::is_complete_type_v<decltype(FooFunc)>, "is_complete_type failure");
+	}
+
+
 	return nErrorCount;
 }
-
-
-
-
-
-
-

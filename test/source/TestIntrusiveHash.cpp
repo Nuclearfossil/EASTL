@@ -136,8 +136,6 @@ template class eastl::intrusive_hash_multimap<int, IHWidget, 37, IHWHash>;
 
 int TestIntrusiveHash()
 {
-	EASTLTest_Printf("TestIntrusiveHash\n");
-
 	int nErrorCount = 0;
 
 	{
@@ -350,10 +348,10 @@ int TestIntrusiveHash()
 		// iterator       find_as(const U& u, UHash uhash, BinaryPredicate predicate);
 		// const_iterator find_as(const U& u, UHash uhash, BinaryPredicate predicate) const;
 
-		itf = ihmSW1.find_as(SetWidgetComparable(7), SWCHash(), eastl::equal_to_2<SetWidget, SetWidgetComparable>());
+		itf = ihmSW1.find_as(SetWidgetComparable(7), SWCHash(), eastl::equal_to<>());
 		VERIFY(itf->mX == 7);
 
-		itfc = ihmSW1Const.find_as(SetWidgetComparable(7), SWCHash(), eastl::equal_to_2<SetWidget, SetWidgetComparable>());
+		itfc = ihmSW1Const.find_as(SetWidgetComparable(7), SWCHash(), eastl::equal_to<>());
 		VERIFY(itfc->mX == 7);
 
 
@@ -613,22 +611,14 @@ int TestIntrusiveHash()
 
 		// iterator       find_as(const U& u);
 		// const_iterator find_as(const U& u) const;
+		
+		EASTL_INTERNAL_DISABLE_DEPRECATED()
+		itf = ihmMW1.find_as(8);
+		VERIFY(itf->mKey == 8);
 
-		itf = ihmMW1.find_as(7.f);
-		VERIFY(itf->mKey == 7);
-
-		itfc = ihmMW1Const.find_as(7.f);
-		VERIFY(itfc->mKey == 7);
-
-
-		// iterator       find_as(const U& u, UHash uhash, BinaryPredicate predicate);
-		// const_iterator find_as(const U& u, UHash uhash, BinaryPredicate predicate) const;
-
-		itf = ihmMW1.find_as(7.f, eastl::hash<float>(), eastl::equal_to_2<int, float>());
-		VERIFY(itf->mKey == 7);
-
-		itfc = ihmMW1Const.find_as(7.f, eastl::hash<float>(), eastl::equal_to_2<int, float>());
-		VERIFY(itfc->mKey == 7);
+		itfc = ihmMW1Const.find_as(8);
+		VERIFY(itfc->mKey == 8);
+		EASTL_INTERNAL_RESTORE_DEPRECATED()
 
 
 		// iterator  erase(iterator);

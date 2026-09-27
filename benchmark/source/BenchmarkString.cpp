@@ -10,17 +10,12 @@
 #include <EASTL/string.h>
 #include <EASTL/sort.h>
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable: 4350)
-#endif
+EA_DISABLE_ALL_VC_WARNINGS()
 #include <algorithm>
 #include <string>
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef _MSC_VER
-	#pragma warning(pop)
-#endif
+EA_RESTORE_ALL_VC_WARNINGS()
 
 
 using namespace EA;
@@ -100,7 +95,7 @@ namespace
 		for(typename Container::size_type j = 0, jEnd = c.size(); j < jEnd; j++)
 			temp += c[j];
 		stopwatch.Stop();
-		sprintf(Benchmark::gScratchBuffer, "%u", (unsigned)temp);
+		EA::StdC::Snprintf(Benchmark::gScratchBuffer, Benchmark::kScratchBufferSize, "%u", (unsigned)temp);
 	}
 
 

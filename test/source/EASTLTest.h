@@ -8,14 +8,11 @@
 
 
 #include <EABase/eabase.h>
+#include <EAStdC/EASprintf.h>
 #include <EATest/EATest.h>
+#include <EASTL/atomic.h>
 
-#ifdef _MSC_VER
-	#pragma warning(push, 0)
-	#pragma warning(disable:4350) // for whatever reason, the push,0 above does not turn this warning off with vs2012.
-								  // VC++ 2012 STL headers generate this. warning C4350: behavior change: 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc(const std::_Wrap_alloc<_Alloc> &) throw()' called instead of 'std::_Wrap_alloc<_Alloc>::_Wrap_alloc<std::_Wrap_alloc<_Alloc>>(_Other &) throw()'
-#endif
-
+EA_DISABLE_ALL_VC_WARNINGS()
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -24,64 +21,91 @@
 	#include <stdexcept>
 	#include <new>
 #endif
-
-#ifdef _MSC_VER
-	#pragma warning(pop)
-#endif
+EA_RESTORE_ALL_VC_WARNINGS();
 
 
-int TestExtra();
-int TestUtility();
-int TestTuple();
-int TestMemory();
-int TestFunctional();
+int TestAlgorithm();
 int TestAllocator();
-int TestRandom();
-int TestNumericLimits();
+int TestAllocatorPropagate();
+int TestAny();
+int TestArray();
+int TestBit();
+int TestBadExpectedAccess();
+int TestBitVector();
 int TestBitset();
-int TestTypeTraits();
+int TestCharTraits();
+int TestChrono();
+int TestConcepts();
+int TestContainerBehaviour();
 int TestCppCXTypeTraits();
-int TestSmartPtr();
+int TestDeque();
+int TestExpected();
+int TestExtra();
+int TestFinally();
+int TestFixedFunction();
+int TestFixedHash();
+int TestFixedList();
+int TestFixedMap();
+int TestFixedSList();
+int TestFixedSet();
+int TestFixedString();
+int TestFixedTupleVector();
+int TestFixedVector();
+int TestFunctional();
+int TestHash();
+int TestHeap();
+int TestIntrusiveHash();
+int TestIntrusiveList();
+int TestIntrusiveSDList();
+int TestIntrusiveSList();
+int TestIterator();
 int TestList();
 int TestListMap();
-int TestFixedList();
-int TestSList();
-int TestFixedSList();
-int TestIntrusiveList();
-int TestIntrusiveSList();
-int TestString();
-int TestFixedString();
-int TestArray();
-int TestVector();
-int TestFixedVector();
-int TestSegmentedVector();
-int TestDeque();
+int TestLruCache();
 int TestMap();
-int TestFixedMap();
-int TestStringMap();
+int TestMemory();
+int TestMeta();
+int TestNumericLimits();
+int TestOptional();
+int TestRandom();
+int TestRatio();
+int TestRingBuffer();
+int TestSList();
+int TestSegmentedVector();
 int TestSet();
-int TestFixedSet();
-int TestHash();
-int TestFixedHash();
+int TestSmartPtr();
+int TestSort();
+int TestSpan();
+int TestString();
 int TestStringHashMap();
-int TestIntrusiveHash();
+int TestStringMap();
+int TestStringView();
+int TestTuple();
+int TestTupleVector();
+int TestTypeTraits();
+int TestUnexpected();
+int TestUtility();
+int TestVariant();
+int TestVector();
 int TestVectorMap();
 int TestVectorSet();
-int TestAlgorithm();
-int TestSort();
-int TestHeap();
-int TestRingBuffer();
-int TestSparseMatrix();
-int TestIntrusiveSDList();
-int TestBitVector();
-int TestIterator();
-int TestRatio();
-int TestChrono();
-int TestOptional();
-int TestAny();
-int TestCharTraits();
-int TestStringView();
-
+int TestAtomicBasic();
+int TestAtomicRaw();
+int TestAtomicMultiThreaded();
+int TestAtomicAsm();
+int TestBitcast();
+int TestGslAlgorithum();
+int TestGslAssertion();
+int TestGslAt();
+int TestGslByte();
+int TestGslNotNull();
+int TestGslOwner();
+int TestGslSpanCompatibility();
+int TestGslSpanExt();
+int TestGslSpan();
+int TestGslStrictNotNull();
+int TestGslUtils();
+int TestFlags();
 
 // Now enable warnings as desired.
 #ifdef _MSC_VER
@@ -118,8 +142,8 @@ int TestStringView();
 	#pragma warning(default: 4557)      // '__assume' contains effect 'effect'
   //#pragma warning(default: 4619)      // #pragma warning : there is no warning number 'number'
 	#pragma warning(default: 4623)      // 'derived class' : default constructor could not be generated because a base class default constructor is inaccessible
-	#pragma warning(default: 4625)      // 'derived class' : copy constructor could not be generated because a base class copy constructor is inaccessible
-	#pragma warning(default: 4626)      // 'derived class' : assignment operator could not be generated because a base class assignment operator is inaccessible
+  //#pragma warning(default: 4625)      // 'derived class' : copy constructor could not be generated because a base class copy constructor is inaccessible
+  //#pragma warning(default: 4626)      // 'derived class' : assignment operator could not be generated because a base class assignment operator is inaccessible
 	#pragma warning(default: 4628)      // Digraphs not supported with -Ze. Character sequence 'digraph' not interpreted as alternate token for 'char'
 	#pragma warning(default: 4640)      // 'instance' : construction of local static object is not thread-safe
 	#pragma warning(default: 4668)      // 'symbol' is not defined as a preprocessor macro, replacing with '0' for 'directives'
@@ -149,42 +173,11 @@ int TestStringView();
 
 
 
-///////////////////////////////////////////////////////////////////////////////
-// EA_CHAR16
-//
-// EA_CHAR16 is defined in EABase 2.0.20 and later. If we are using an earlier
-// version of EABase then we replicate what EABase 2.0.20 does.
-//
-//
-#ifndef EA_WCHAR
-	 #define EA_WCHAR(s) L ## s
-#endif
-
-#ifndef EA_CHAR16
-	#if !defined(EA_CHAR16_NATIVE)
-		#if defined(_MSC_VER) && (_MSC_VER >= 1600) && defined(_HAS_CHAR16_T_LANGUAGE_SUPPORT) // VS2010+
-			#define EA_CHAR16_NATIVE 1
-		#elif defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 404) && (defined(__GXX_EXPERIMENTAL_CXX0X__) || defined(__STDC_VERSION__)) // g++ (C++ compiler) 4.4+ with -std=c++0x or gcc (C compiler) 4.4+ with -std=gnu99
-			#define EA_CHAR16_NATIVE 1
-		#else
-			#define EA_CHAR16_NATIVE 0
-		#endif
-	#endif
-
-	#if EA_CHAR16_NATIVE && !defined(_MSC_VER) // Microsoft doesn't support char16_t string literals.
-		#define EA_CHAR16(s) u ## s
-	#elif (EA_WCHAR_SIZE == 2)
-		#define EA_CHAR16(s) L ## s
-	#endif
-#endif
-
-
-
 
 /// EASTL_TestLevel
 ///
-/// Defines how extensive our testing is. A low level is for a desktop or 
-/// nightly build in which the test can run quickly but still hit the 
+/// Defines how extensive our testing is. A low level is for a desktop or
+/// nightly build in which the test can run quickly but still hit the
 /// majority of functionality. High level is for heavy testing and internal
 /// validation which may take numerous hours to run.
 ///
@@ -200,8 +193,8 @@ extern int gEASTL_TestLevel;
 
 /// EASTLTest_CheckMemory
 ///
-/// Does a global memory heap validation check. Returns 0 if OK and 
-/// an error count if there is a problem. 
+/// Does a global memory heap validation check. Returns 0 if OK and
+/// an error count if there is a problem.
 ///
 /// Example usage:
 ///    EASTLTest_CheckMemory();
@@ -217,7 +210,7 @@ int EASTLTest_CheckMemory_Imp(const char* pFile, int nLine);
 	#define EASTLTEST_STD_STL_VER_STLPORT
 #elif defined(_RWSTD_VER_STR) || defined(_RWSTD_NAMESPACE_END)
 	#define EASTLTEST_STD_STL_VER_APACHE
-#elif defined(_YVALS)
+#elif defined(_CPPLIB_VER)
 	#define EASTLTEST_STD_STL_VER_DINKUMWARE
 #elif defined(__GNUC__) && defined(_CXXCONFIG)
 	#define EASTLTEST_STD_STL_VER_GCC
@@ -259,7 +252,8 @@ const char* GetStdSTLName();
 
 /// gEASTLTest_AllocationCount
 ///
-extern int gEASTLTest_AllocationCount; 
+extern eastl::atomic<int> gEASTLTest_AllocationCount;
+extern eastl::atomic<int> gEASTLTest_TotalAllocationCount;
 
 
 
@@ -272,7 +266,7 @@ extern int gEASTLTest_AllocationCount;
 /// EASTLTest_Rand
 ///
 /// Implements a basic random number generator for EASTL unit tests. It's not
-/// intended to be a robust random number generator (though it is decent), 
+/// intended to be a robust random number generator (though it is decent),
 /// but rather is present so the unit tests can have a portable random number
 /// generator they can rely on being present.
 ///
@@ -314,7 +308,7 @@ public:
 
 	eastl_size_t RandLimit(eastl_size_t nLimit) // Returns a pseudorandom value in range of [0, nLimit)
 	{
-		// Can't do the following correct solution because we don't have a portable int128_t to work with. 
+		// Can't do the following correct solution because we don't have a portable int128_t to work with.
 		// We could implement a 128 bit multiply manually. See EAStdC/int128_t.cpp.
 		// return (eastl_size_t)((Rand() * (uint128_t)nLimit) >> 64);
 
@@ -333,7 +327,7 @@ protected:
 /// RandGenT
 ///
 /// A wrapper for EASTLTest_Rand which generates values of the given integral
-/// data type. This is mostly useful for clearnly avoiding compiler warnings, 
+/// data type. This is mostly useful for clearnly avoiding compiler warnings,
 /// as we intentionally enable the highest warning levels in these tests.
 ///
 template <typename Integer>
@@ -357,8 +351,8 @@ struct RandGenT
 /// kMagicValue
 ///
 /// Used as a unique integer. We assign this to TestObject in its constructor
-/// and verify in the TestObject destructor that the value is unchanged. 
-/// This can be used to tell, for example, if an invalid object is being 
+/// and verify in the TestObject destructor that the value is unchanged.
+/// This can be used to tell, for example, if an invalid object is being
 /// destroyed.
 ///
 const uint32_t kMagicValue = 0x01f1cbe8;
@@ -369,7 +363,7 @@ const uint32_t kMagicValue = 0x01f1cbe8;
 ///
 /// Implements a generic object that is suitable for use in container tests.
 /// Note that we choose a very restricted set of functions that are available
-/// for this class. Do not add any additional functions, as that would 
+/// for this class. Do not add any additional functions, as that would
 /// compromise the intentions of the unit tests.
 ///
 struct TestObject
@@ -385,8 +379,10 @@ struct TestObject
 	static int64_t  sTOArgCtorCount;     // Count of times the x0,x1,x2 ctor was called.
 	static int64_t  sTOCopyCtorCount;    // Count of times copy ctor was called.
 	static int64_t  sTOMoveCtorCount;    // Count of times move ctor was called.
+	static int64_t  sTOAssignCount;      // Count of times any assignment was called.
 	static int64_t  sTOCopyAssignCount;  // Count of times copy assignment was called.
 	static int64_t  sTOMoveAssignCount;  // Count of times move assignment was called.
+	static int64_t  sTOSwapCount;
 	static int      sMagicErrorCount;    // Number of magic number mismatch errors.
 
 	explicit TestObject(int x = 0, bool bThrowOnCopy = false)
@@ -408,44 +404,61 @@ struct TestObject
 		mId = sTOCtorCount;
 	}
 
+#if EASTL_EXCEPTIONS_ENABLED
+	struct ThrowOnConstruct {};
+	static inline constexpr ThrowOnConstruct throw_on_construct{};
+
+	explicit TestObject(ThrowOnConstruct)
+	{
+		// don't initialize any members.
+		throw "TestObject constructor: ThrowOnConstruct";
+	}
+#endif
+
 	TestObject(const TestObject& testObject)
 		: mX(testObject.mX), mbThrowOnCopy(testObject.mbThrowOnCopy), mMagicValue(testObject.mMagicValue)
 	{
-		++sTOCount;
-		++sTOCtorCount;
-		++sTOCopyCtorCount;
-		mId = sTOCtorCount;
 		if(mbThrowOnCopy)
 		{
 			#if EASTL_EXCEPTIONS_ENABLED
 				throw "Disallowed TestObject copy";
 			#endif
 		}
+		++sTOCount;
+		++sTOCtorCount;
+		++sTOCopyCtorCount;
+		mId = sTOCtorCount;
 	}
 
-	#if !defined(EA_COMPILER_NO_RVALUE_REFERENCES)
-		// Due to the nature of TestObject, there isn't much special for us to 
-		// do in our move constructor. A move constructor swaps its contents with 
-		// the other object, whhich is often a default-constructed object.
-		TestObject(TestObject&& testObject)
-			: mX(testObject.mX), mbThrowOnCopy(testObject.mbThrowOnCopy), mMagicValue(testObject.mMagicValue)
+	// Due to the nature of TestObject, there isn't much special for us to
+	// do in our move constructor. A move constructor swaps its contents with
+	// the other object, which is often a default-constructed object.
+	TestObject(TestObject&& testObject)
+		: mX(testObject.mX), mbThrowOnCopy(testObject.mbThrowOnCopy), mMagicValue(testObject.mMagicValue)
+	{
+		if(mbThrowOnCopy)
 		{
-			++sTOCount;
-			++sTOCtorCount;
-			++sTOMoveCtorCount;
-			mId = sTOCtorCount;  // testObject keeps its mId, and we assign ours anew.
-			testObject.mX = 0;   // We are swapping our contents with the TestObject, so give it our "previous" value.
-			if(mbThrowOnCopy)
-			{
-				#if EASTL_EXCEPTIONS_ENABLED
-					throw "Disallowed TestObject copy";
-				#endif
-			}
+			#if EASTL_EXCEPTIONS_ENABLED
+				throw "Disallowed TestObject copy";
+			#endif
 		}
-	#endif
+		++sTOCount;
+		++sTOCtorCount;
+		++sTOMoveCtorCount;
+		mId = sTOCtorCount;  // testObject keeps its mId, and we assign ours anew.
+		testObject.mX = 0;   // We are swapping our contents with the TestObject, so give it our "previous" value.
+	}
 
 	TestObject& operator=(const TestObject& testObject)
 	{
+		if(mbThrowOnCopy)
+		{
+			#if EASTL_EXCEPTIONS_ENABLED
+				throw "Disallowed TestObject copy";
+			#endif
+		}
+
+		++sTOAssignCount;
 		++sTOCopyAssignCount;
 
 		if(&testObject != this)
@@ -454,41 +467,35 @@ struct TestObject
 			// Leave mId alone.
 			mMagicValue = testObject.mMagicValue;
 			mbThrowOnCopy = testObject.mbThrowOnCopy;
-			if(mbThrowOnCopy)
-			{
-				#if EASTL_EXCEPTIONS_ENABLED
-					throw "Disallowed TestObject copy";
-				#endif
-			}
 		}
 		return *this;
 	}
 
-	#if !defined(EA_COMPILER_NO_RVALUE_REFERENCES)
-		TestObject& operator=(TestObject&& testObject)
+	TestObject& operator=(TestObject&& testObject)
+	{
+		if(mbThrowOnCopy)
 		{
-			++sTOMoveAssignCount;
-
-			if(&testObject != this)
-			{
-				eastl::swap(mX, testObject.mX);
-				// Leave mId alone.
-				eastl::swap(mMagicValue, testObject.mMagicValue);
-				eastl::swap(mbThrowOnCopy, testObject.mbThrowOnCopy);
-
-				if(mbThrowOnCopy)
-				{
-					#if EASTL_EXCEPTIONS_ENABLED
-						throw "Disallowed TestObject copy";
-					#endif
-				}
-			}
-			return *this;
+			#if EASTL_EXCEPTIONS_ENABLED
+				throw "Disallowed TestObject copy";
+			#endif
 		}
-	#endif
+
+		++sTOAssignCount;
+		++sTOMoveAssignCount;
+
+		if(&testObject != this)
+		{
+			eastl::swap(mX, testObject.mX);
+			// Leave mId alone.
+			eastl::swap(mMagicValue, testObject.mMagicValue);
+			eastl::swap(mbThrowOnCopy, testObject.mbThrowOnCopy);
+		}
+		return *this;
+	}
 
 	~TestObject()
 	{
+		mX = 0;
 		if(mMagicValue != kMagicValue)
 			++sMagicErrorCount;
 		mMagicValue = 0;
@@ -496,8 +503,11 @@ struct TestObject
 		++sTODtorCount;
 	}
 
-	static void Reset()
+	// todo: Should be EA_NODISCARD. Usage should be:
+	// EATEST_VERIFY(TestObject::Reset());
+	static bool Reset()
 	{
+		const bool result = IsClear();
 		sTOCount            = 0;
 		sTOCtorCount        = 0;
 		sTODtorCount        = 0;
@@ -505,20 +515,36 @@ struct TestObject
 		sTOArgCtorCount     = 0;
 		sTOCopyCtorCount    = 0;
 		sTOMoveCtorCount    = 0;
+		sTOAssignCount		= 0;
 		sTOCopyAssignCount  = 0;
 		sTOMoveAssignCount  = 0;
+		sTOSwapCount		= 0;
 		sMagicErrorCount    = 0;
+		return result;
 	}
 
-	static bool IsClear() // Returns true if there are no existing TestObjects and the sanity checks related to that test OK.
+	EA_NODISCARD static bool IsClear() // Returns true if there are no existing TestObjects and the sanity checks related to that test OK.
 	{
 		return (sTOCount == 0) && (sTODtorCount == sTOCtorCount) && (sMagicErrorCount == 0);
+	}
+
+	TestObject& operator++()
+	{
+		++mX;
+		return *this;
+	}
+
+	TestObject operator++(int) const
+	{
+		TestObject temp(*this);
+		++temp;
+		return temp;
 	}
 };
 
 // Operators
-// We specifically define only == and <, in order to verify that 
-// our containers and algorithms are not mistakenly expecting other 
+// We specifically define only == and <, in order to verify that
+// our containers and algorithms are not mistakenly expecting other
 // operators for the contained and manipulated classes.
 inline bool operator==(const TestObject& t1, const TestObject& t2)
 	{ return t1.mX == t2.mX; }
@@ -526,16 +552,20 @@ inline bool operator==(const TestObject& t1, const TestObject& t2)
 inline bool operator<(const TestObject& t1, const TestObject& t2)
 	{ return t1.mX < t2.mX; }
 
+inline void swap(TestObject& t1, TestObject& t2)
+{
+	++TestObject::sTOSwapCount;
+	eastl::swap(t1, t2);
+}
 
 // TestObject hash
-// Normally you don't want to put your hash functions in the eastl namespace, as that namespace is owned by EASTL.
-// However, these are the EASTL unit tests and we can say that they are also owned by EASTL.
+// add program defined type specialization: https://eel.is/c++draft/namespace.std#2
 namespace eastl
 {
-	template <> 
+	template <>
 	struct hash<TestObject>
 	{
-		size_t operator()(const TestObject& a) const 
+		size_t operator()(const TestObject& a) const
 			{ return static_cast<size_t>(a.mX); }
 	};
 }
@@ -545,36 +575,9 @@ namespace eastl
 // Used for printing TestObject contents via the PrintSequence function,
 // which is defined below. See the PrintSequence function for documentation.
 // This function is an analog of the eastl::use_self and use_first functions.
-// We declare this all in one line because the user should never need to 
+// We declare this all in one line because the user should never need to
 // debug usage of this function.
 template <typename T> struct use_mX { int operator()(const T& t) const { return t.mX; } };
-
-
-
-///////////////////////////////////////////////////////////////////////////////
-// SizedPOD
-//
-// Exists for the purpose testing PODs that are larger than built-in types.
-//
-template <size_t kSize>
-struct SizedPOD
-{
-	char memory[kSize];
-};
-
-
-
-///////////////////////////////////////////////////////////////////////////////
-/// ConstType
-///
-/// Used to test const type containers (e.g. vector<const ConstType>).
-///
-class ConstType
-{
-public:
-	ConstType(int value) : mDummy(value) {};
-	int mDummy;
-};
 
 
 
@@ -586,7 +589,7 @@ public:
 ///
 struct TestObjectHash
 {
-	size_t operator()(const TestObject& t) const 
+	size_t operator()(const TestObject& t) const
 	{
 		return (size_t)t.mX;
 	}
@@ -594,24 +597,47 @@ struct TestObjectHash
 
 
 
+struct ImplicitlyConvertible
+{
+	static size_t sDefaultCtorCount;
+	static size_t sConvertCtorCount;
+	static size_t sCopyCtorCount;
+	static size_t sMoveCtorCount;
+	static size_t sCopyAssignCount;
+	static size_t sMoveAssignCount;
+
+	struct ImplicitType {};
+	static const ImplicitType implicit;
+
+	ImplicitlyConvertible() { ++sDefaultCtorCount; }
+	/* implicit */ ImplicitlyConvertible(ImplicitType) { ++sConvertCtorCount; }
+
+	ImplicitlyConvertible(const ImplicitlyConvertible&) { ++sCopyCtorCount; }
+	ImplicitlyConvertible(ImplicitlyConvertible&&) { ++sMoveCtorCount; }
+	ImplicitlyConvertible& operator=(const ImplicitlyConvertible&) { ++sCopyAssignCount; return *this; }
+	ImplicitlyConvertible& operator=(ImplicitlyConvertible&&) { ++sMoveAssignCount; return *this; }
+
+	static void Reset()
+	{
+		sDefaultCtorCount = 0;
+		sConvertCtorCount = 0;
+		sCopyCtorCount = 0;
+		sMoveCtorCount = 0;
+		sCopyAssignCount = 0;
+		sMoveAssignCount = 0;
+	};
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Align16
 ///
 
-#if defined(EA_PROCESSOR_ARM)
-	#define kEASTLTestAlign16 8 //ARM processors can only align to 8 
-#else
-	#define kEASTLTestAlign16 16
-#endif
-
-
-EA_PREFIX_ALIGN(kEASTLTestAlign16)
-struct Align16{
+struct alignas(16) Align16
+{
 	explicit Align16(int x = 0) : mX(x) {}
 	int mX;
-} EA_POSTFIX_ALIGN(kEASTLTestAlign16);
+};
 
 inline bool operator==(const Align16& a, const Align16& b)
 	{ return (a.mX == b.mX); }
@@ -624,19 +650,11 @@ inline bool operator<(const Align16& a, const Align16& b)
 ///////////////////////////////////////////////////////////////////////////////
 /// Align32
 ///
-#if defined(EA_PROCESSOR_ARM)
-	#define kEASTLTestAlign32 8 //ARM processors can only align to 8 
-#elif defined(__GNUC__) && (((__GNUC__ * 100) + __GNUC_MINOR__) < 400) // GCC 2.x, 3.x
-	#define kEASTLTestAlign32 16 // Some versions of GCC fail to support any alignment beyond 16.
-#else
-	#define kEASTLTestAlign32 32
-#endif
-
-EA_PREFIX_ALIGN(kEASTLTestAlign32)
-struct Align32{
+struct alignas(32) Align32
+{
 	explicit Align32(int x = 0) : mX(x) {}
 	int mX;
-} EA_POSTFIX_ALIGN(kEASTLTestAlign32);
+};
 
 inline bool operator==(const Align32& a, const Align32& b)
 	{ return (a.mX == b.mX); }
@@ -645,26 +663,14 @@ inline bool operator<(const Align32& a, const Align32& b)
 	{ return (a.mX < b.mX); }
 
 
-
 ///////////////////////////////////////////////////////////////////////////////
 /// Align64
 ///
-/// Used for testing of alignment.
-///
-#if defined(EA_PROCESSOR_ARM)
-	#define kEASTLTestAlign64 8
-#elif defined(__GNUC__) && (((__GNUC__ * 100) + __GNUC_MINOR__) < 400) // GCC 2.x, 3.x
-	#define kEASTLTestAlign64 16 // Some versions of GCC fail to support any alignment beyond 16.
-#else
-	#define kEASTLTestAlign64 64
-#endif
-
-EA_PREFIX_ALIGN(kEASTLTestAlign64)
-struct Align64
+struct alignas(64) Align64
 {
 	explicit Align64(int x = 0) : mX(x) {}
 	int mX;
-} EA_POSTFIX_ALIGN(kEASTLTestAlign64);
+};
 
 inline bool operator==(const Align64& a, const Align64& b)
 	{ return (a.mX == b.mX); }
@@ -709,14 +715,14 @@ struct test_use_self
 ///     vector<int> v(10, 0);
 ///     generate(v.begin(), v.end(), GenerateIncrementalIntegers<int>());
 ///     // v will now have 0, 1, 2, ... 8, 9.
-/// 
+///
 ///     generate_n(intArray.begin(), 10, GenerateIncrementalIntegers<int>());
 ///     // v will now have 0, 1, 2, ... 8, 9.
 ///
 ///     vector<TestObject> vTO(10, 0);
 ///     generate(vTO.begin(), vTO.end(), GenerateIncrementalIntegers<TestObject>());
 ///     // vTO will now have 0, 1, 2, ... 8, 9.
-/// 
+///
 template <typename T>
 struct GenerateIncrementalIntegers
 {
@@ -729,7 +735,7 @@ struct GenerateIncrementalIntegers
 		{ mX = x; }
 
 	T operator()()
-		{ return T(mX++); } 
+		{ return T(mX++); }
 };
 
 
@@ -742,7 +748,7 @@ struct GenerateIncrementalIntegers
 ///     vector<int> v(10, 0);
 ///     for_each(v.begin(), v.end(), SetIncrementalIntegers<int>());
 ///     // v will now have 0, 1, 2, ... 8, 9.
-/// 
+///
 template <typename T>
 struct SetIncrementalIntegers
 {
@@ -755,14 +761,14 @@ struct SetIncrementalIntegers
 		{ mX = x; }
 
 	void operator()(T& t)
-		{ t = T(mX++); } 
+		{ t = T(mX++); }
 };
 
 
 
 /// CompareContainers
 ///
-/// Does a comparison between the contents of two containers. 
+/// Does a comparison between the contents of two containers.
 ///
 /// Specifically tests for the following properties:
 ///     empty() is the same for both
@@ -770,7 +776,7 @@ struct SetIncrementalIntegers
 ///     iteration through both element by element yields equal values.
 ///
 template <typename T1, typename T2, typename ExtractValue1, typename ExtractValue2>
-int CompareContainers(const T1& t1, const T2& t2, const char* ppName, 
+int CompareContainers(const T1& t1, const T2& t2, const char* ppName,
 					  ExtractValue1 ev1 = test_use_self<T1>(), ExtractValue2 ev2 = test_use_self<T2>())
 {
 	int nErrorCount = 0;
@@ -802,7 +808,7 @@ int CompareContainers(const T1& t1, const T2& t2, const char* ppName,
 			if(!(ev1(v1) == ev2(v2)))
 			{
 				EASTLTest_Printf("%s: Container iterator difference at index %d\n", ppName, j);
-				break;  
+				break;
 			}
 		}
 
@@ -814,19 +820,77 @@ int CompareContainers(const T1& t1, const T2& t2, const char* ppName,
 }
 
 
+template <typename InputIterator1, typename InputIterator2>
+bool VerifySequence(InputIterator1 firstActual, InputIterator1 lastActual, InputIterator2 firstExpected, InputIterator2 lastExpected, const char* pName)
+{
+	size_t     numMatching = 0;
 
+	while ((firstActual != lastActual) && (firstExpected != lastExpected) && (*firstActual == *firstExpected))
+	{
+		++firstActual;
+		++firstExpected;
+		++numMatching;
+	}
+
+	if (firstActual == lastActual && firstExpected == lastExpected)
+	{
+		return true;
+	}
+	else if (firstActual != lastActual && firstExpected == lastExpected)
+	{
+		size_t numActual = numMatching, numExpected = numMatching;
+		for (; firstActual != lastActual; ++firstActual)
+			++numActual;
+		if (pName)
+			EASTLTest_Printf("[%s] Too many elements: expected %u, found %u\n", pName, numExpected, numActual);
+		else
+			EASTLTest_Printf("Too many elements: expected %u, found %u\n", numExpected, numActual);
+		return false;
+	}
+	else if (firstActual == lastActual && firstExpected != lastExpected)
+	{
+		size_t numActual = numMatching, numExpected = numMatching;
+		for (; firstExpected != lastExpected; ++firstExpected)
+			++numExpected;
+		if (pName)
+			EASTLTest_Printf("[%s] Too few elements: expected %u, found %u\n", pName, numExpected, numActual);
+		else
+			EASTLTest_Printf("Too few elements: expected %u, found %u\n", numExpected, numActual);
+		return false;
+	}
+	else // if (firstActual != lastActual && firstExpected != lastExpected)
+	{
+		if (pName)
+			EASTLTest_Printf("[%s] Mismatch at index %u\n", pName, numMatching);
+		else
+			EASTLTest_Printf("Mismatch at index %u\n", numMatching);
+		return false;
+	}
+}
+
+template <typename InputIterator, typename T = typename InputIterator::value_type>
+bool VerifySequence(InputIterator firstActual, InputIterator lastActual, std::initializer_list<T> initList, const char* pName)
+{
+	return VerifySequence(firstActual, lastActual, initList.begin(), initList.end(), pName);
+}
+
+template <typename Container, typename T = typename Container::value_type>
+bool VerifySequence(const Container& container, std::initializer_list<T> initList, const char* pName)
+{
+	return VerifySequence(container.begin(), container.end(), initList.begin(), initList.end(), pName);
+}
 
 
 /// VerifySequence
 ///
 /// Allows the user to specify that a container has a given set of values.
-/// 
+///
 /// Example usage:
 ///    vector<int> v;
 ///    v.push_back(1); v.push_back(3); v.push_back(5);
 ///    VerifySequence(v.begin(), v.end(), int(), "v.push_back", 1, 3, 5, -1);
 ///
-/// Note: The StackValue template argument is a hint to the compiler about what type 
+/// Note: The StackValue template argument is a hint to the compiler about what type
 ///       the passed vararg sequence is.
 ///
 template <typename InputIterator, typename StackValue>
@@ -889,7 +953,7 @@ bool VerifySequence(InputIterator first, InputIterator last, StackValue /*unused
 /// PrintSequence
 ///
 /// Allows the user to print a sequence of values.
-/// 
+///
 /// Example usage:
 ///    vector<int> v;
 ///    PrintSequence(v.begin(), v.end(), use_self<int>(), 100, "vector", 1, 3, 5, -1);
@@ -898,7 +962,7 @@ bool VerifySequence(InputIterator first, InputIterator last, StackValue /*unused
 ///    template <typename T> struct use_mX { int operator()(const T& t) const { return t.mX; } };
 ///    vector<TestObject> v;
 ///    PrintSequence(v.begin(), v.end(), use_mX<TestObject>(), 100, "vector", 1, 3, 5, -1);
-///    
+///
 template <typename InputIterator, typename ExtractInt>
 void PrintSequence(InputIterator first, InputIterator last, ExtractInt extractInt, int nMaxCount, const char* pName, ...)
 {
@@ -931,10 +995,10 @@ void PrintSequence(InputIterator first, InputIterator last, ExtractInt extractIn
 /// Converts something which can be iterated into a formal input iterator.
 /// This class is useful for testing functions and algorithms that expect
 /// InputIterators, which are the lowest and 'weakest' form of iterators.
-/// 
+///
 /// Key traits of InputIterators:
 ///    Algorithms on input iterators should never attempt to pass
-///    through the same iterator twice. They should be single pass 
+///    through the same iterator twice. They should be single pass
 ///    algorithms. value_type T is not required to be an lvalue type.
 ///
 /// Example usage:
@@ -1059,24 +1123,24 @@ operator+(typename demoted_iterator<Iterator1, IteratorCategory1>::difference_ty
 // Returns a demoted iterator
 //
 template <typename Iterator>
-inline demoted_iterator<Iterator, EASTL_ITC_NS::input_iterator_tag>
+inline demoted_iterator<Iterator, eastl::input_iterator_tag>
 to_input_iterator(const Iterator& i)
-	{ return demoted_iterator<Iterator, EASTL_ITC_NS::input_iterator_tag>(i); }
+	{ return demoted_iterator<Iterator, eastl::input_iterator_tag>(i); }
 
 template <typename Iterator>
-inline demoted_iterator<Iterator, EASTL_ITC_NS::forward_iterator_tag>
+inline demoted_iterator<Iterator, eastl::forward_iterator_tag>
 to_forward_iterator(const Iterator& i)
-	{ return demoted_iterator<Iterator, EASTL_ITC_NS::forward_iterator_tag>(i); }
+	{ return demoted_iterator<Iterator, eastl::forward_iterator_tag>(i); }
 
 template <typename Iterator>
-inline demoted_iterator<Iterator, EASTL_ITC_NS::bidirectional_iterator_tag>
+inline demoted_iterator<Iterator, eastl::bidirectional_iterator_tag>
 to_bidirectional_iterator(const Iterator& i)
-	{ return demoted_iterator<Iterator, EASTL_ITC_NS::bidirectional_iterator_tag>(i); }
+	{ return demoted_iterator<Iterator, eastl::bidirectional_iterator_tag>(i); }
 
 template <typename Iterator>
-inline demoted_iterator<Iterator, EASTL_ITC_NS::random_access_iterator_tag>
+inline demoted_iterator<Iterator, eastl::random_access_iterator_tag>
 to_random_access_iterator(const Iterator& i)
-	{ return demoted_iterator<Iterator, EASTL_ITC_NS::random_access_iterator_tag>(i); }
+	{ return demoted_iterator<Iterator, eastl::random_access_iterator_tag>(i); }
 
 
 
@@ -1086,68 +1150,60 @@ to_random_access_iterator(const Iterator& i)
 ///////////////////////////////////////////////////////////////////////////////
 // MallocAllocator
 //
-// Implements an EASTL allocator that uses malloc/free as opposed to 
-// new/delete or PPMalloc Malloc/Free. This is useful for testing 
+// Implements an EASTL allocator that uses malloc/free as opposed to
+// new/delete or PPMalloc Malloc/Free. This is useful for testing
 // allocator behaviour of code.
 //
 // Example usage:
 //      vector<int, MallocAllocator> intVector;
-// 
+//
 class MallocAllocator
 {
 public:
-	MallocAllocator(const char* = EASTL_NAME_VAL("MallocAllocator")) : mAllocCount(0), mFreeCount(0), mAllocVolume(0)
-		{ }
+	MallocAllocator(const char* = EASTL_NAME_VAL("MallocAllocator"))
+		: mAllocCount(0), mFreeCount(0), mAllocVolume(0) {}
 
 	MallocAllocator(const MallocAllocator& x)
-		: mAllocCount(x.mAllocCount), mFreeCount(x.mFreeCount), mAllocVolume(x.mAllocVolume)
-		{ }
+		: mAllocCount(x.mAllocCount), mFreeCount(x.mFreeCount), mAllocVolume(x.mAllocVolume) {}
 
-	MallocAllocator(const MallocAllocator&, const char*)
-		{ }
+	MallocAllocator(const MallocAllocator& x, const char*) : MallocAllocator(x) {}
 
 	MallocAllocator& operator=(const MallocAllocator& x)
-		{ mAllocCount = x.mAllocCount; mFreeCount = x.mFreeCount; mAllocVolume = x.mAllocVolume; return *this; }
+	{
+		mAllocCount = x.mAllocCount;
+		mFreeCount = x.mFreeCount;
+		mAllocVolume = x.mAllocVolume;
+		return *this;
+	}
 
 	void* allocate(size_t n, int = 0);
+	void* allocate(size_t n, size_t, size_t, int = 0); // We don't support alignment, so you can't use this class where alignment is required.
+	void deallocate(void* p, size_t n);
 
-	// We don't support alignment, so you can't use this class where alignment is required.
-	void* allocate(size_t n, size_t, size_t, int = 0);
-
-	void  deallocate(void* p, size_t n);
-
-	const char* get_name() const
-		{ return "MallocAllocator"; }
-
-	void set_name(const char*)
-		{ }
+	const char* get_name() const { return "MallocAllocator"; }
+	void set_name(const char*) {}
 
 	static void reset_all()
-		{ mAllocCountAll = 0; mFreeCountAll = 0; mAllocVolumeAll = 0; mpLastAllocation = NULL; }
+	{
+		mAllocCountAll = 0;
+		mFreeCountAll = 0;
+		mAllocVolumeAll = 0;
+		mpLastAllocation = NULL;
+	}
 
 public:
-	int    mAllocCount;
-	int    mFreeCount;
+	int mAllocCount;
+	int mFreeCount;
 	size_t mAllocVolume;
 
-	static int    mAllocCountAll;
-	static int    mFreeCountAll;
+	static int mAllocCountAll;
+	static int mFreeCountAll;
 	static size_t mAllocVolumeAll;
-	static void*  mpLastAllocation;
+	static void* mpLastAllocation;
 };
 
-inline
-bool operator==(const MallocAllocator&, const MallocAllocator&)
-{
-	return true;
-}
-
-inline
-bool operator!=(const MallocAllocator&, const MallocAllocator&)
-{
-	return false;
-}
-
+inline bool operator==(const MallocAllocator&, const MallocAllocator&) { return true; }
+inline bool operator!=(const MallocAllocator&, const MallocAllocator&) { return false; }
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1158,95 +1214,162 @@ bool operator!=(const MallocAllocator&, const MallocAllocator&)
 //
 // Example usage:
 //      vector<int, CustomAllocator> intVector;
-// 
+//
 class CustomAllocator
 {
 public:
-	CustomAllocator(const char* = NULL)
-		{ }
-
-	CustomAllocator(const CustomAllocator&)
-		{ }
-
-	CustomAllocator(const CustomAllocator&, const char*)
-		{ }
-
-	CustomAllocator& operator=(const CustomAllocator&)
-		{  return *this; }
+	CustomAllocator(const char* = NULL) {}
+	CustomAllocator(const CustomAllocator&) {}
+	CustomAllocator(const CustomAllocator&, const char*) {}
+	CustomAllocator& operator=(const CustomAllocator&) { return *this; }
 
 	void* allocate(size_t n, int flags = 0);
-
 	void* allocate(size_t n, size_t, size_t, int flags = 0);
+	void deallocate(void* p, size_t n);
 
-	void  deallocate(void* p, size_t n);
-
-	const char* get_name() const
-		{ return "CustomAllocator"; }
-
-	void set_name(const char*)
-		{ }
+	const char* get_name() const { return "CustomAllocator"; }
+	void set_name(const char*) {}
 };
 
-
-inline
-bool operator==(const CustomAllocator&, const CustomAllocator&)
-{
-	return true;
-}
-
-inline
-bool operator!=(const CustomAllocator&, const CustomAllocator&)
-{
-	return false;
-}
+inline bool operator==(const CustomAllocator&, const CustomAllocator&) { return true; }
+inline bool operator!=(const CustomAllocator&, const CustomAllocator&) { return false; }
 
 
-
-
+///////////////////////////////////////////////////////////////////////////////
 /// UnequalAllocator
 ///
-/// Acts the same as eastl::allocator, but always compares as unequal to an 
+/// Acts the same as eastl::allocator, but always compares as unequal to an
 /// instance of itself.
 ///
 class UnequalAllocator
 {
 public:
 	EASTL_ALLOCATOR_EXPLICIT UnequalAllocator(const char* pName = EASTL_NAME_VAL(EASTL_ALLOCATOR_DEFAULT_NAME))
-		: mAllocator(pName) { }
+	    : mAllocator(pName) {}
 
-	UnequalAllocator(const UnequalAllocator& x)
-		: mAllocator(x.mAllocator) { }
-
-	UnequalAllocator(const UnequalAllocator& x, const char* pName)
-		: mAllocator(x.mAllocator) { set_name(pName); }
-
+	UnequalAllocator(const UnequalAllocator& x) : mAllocator(x.mAllocator) {}
+	UnequalAllocator(const UnequalAllocator& x, const char* pName) : mAllocator(x.mAllocator) { set_name(pName); }
 	UnequalAllocator& operator=(const UnequalAllocator& x)
-		{ mAllocator = x.mAllocator; return *this; }
+	{
+		mAllocator = x.mAllocator;
+		return *this;
+	}
 
-	void* allocate(size_t n, int flags = 0)
-		{ return mAllocator.allocate(n, flags); }
+	void* allocate(size_t n, int flags = 0) { return mAllocator.allocate(n, flags); }
+	void* allocate(size_t n, size_t alignment, size_t offset, int flags = 0) { return mAllocator.allocate(n, alignment, offset, flags); }
+	void deallocate(void* p, size_t n) { return mAllocator.deallocate(p, n); }
 
-	void* allocate(size_t n, size_t alignment, size_t offset, int flags = 0)
-		{ return mAllocator.allocate(n, alignment, offset, flags); }
-
-	void deallocate(void* p, size_t n)
-		{ return mAllocator.deallocate(p, n); }
-
-	const char* get_name() const
-		{ return mAllocator.get_name(); }
-
-	void set_name(const char* pName)
-		{ mAllocator.set_name(pName); }
+	const char* get_name() const { return mAllocator.get_name(); }
+	void set_name(const char* pName) { mAllocator.set_name(pName); }
 
 protected:
 	eastl::allocator mAllocator;
 };
 
-inline bool operator==(const UnequalAllocator&, const UnequalAllocator&)
-	{ return false; }
+inline bool operator==(const UnequalAllocator&, const UnequalAllocator&) { return false; }
+inline bool operator!=(const UnequalAllocator&, const UnequalAllocator&) { return true; }
 
-inline bool operator!=(const UnequalAllocator&, const UnequalAllocator&)
-	{ return true; }
+
+///////////////////////////////////////////////////////////////////////////////
+/// CountingAllocator
+///
+/// Counts allocation events allowing unit tests to validate assumptions.
+///
+class CountingAllocator : public eastl::allocator
+{
+public:
+	using base_type = eastl::allocator;
+
+	EASTL_ALLOCATOR_EXPLICIT CountingAllocator(const char* pName = EASTL_NAME_VAL(EASTL_ALLOCATOR_DEFAULT_NAME))
+	    : base_type(pName)
+	{
+		totalCtorCount++;
+		defaultCtorCount++;
+	}
+
+	CountingAllocator(const CountingAllocator& x) : base_type(x)
+	{
+		totalCtorCount++;
+		copyCtorCount++;
+	}
+
+	CountingAllocator(const CountingAllocator& x, const char* pName) : base_type(x)
+	{
+		totalCtorCount++;
+		copyCtorCount++;
+		set_name(pName);
+	}
+
+	CountingAllocator& operator=(const CountingAllocator& x)
+	{
+		base_type::operator=(x);
+		assignOpCount++;
+		return *this;
+	}
+
+	virtual void* allocate(size_t n, int flags = 0)
+	{
+		activeAllocCount++;
+		totalAllocCount++;
+		totalAllocatedMemory += n;
+		activeAllocatedMemory += n;
+		return base_type::allocate(n, flags);
+	}
+
+	virtual void* allocate(size_t n, size_t alignment, size_t offset, int flags = 0)
+	{
+		activeAllocCount++;
+		totalAllocCount++;
+		totalAllocatedMemory += n;
+		activeAllocatedMemory += n;
+		return base_type::allocate(n, alignment, offset, flags);
+	}
+
+	void deallocate(void* p, size_t n)
+	{
+		activeAllocCount--;
+		totalDeallocCount--;
+		activeAllocatedMemory -= n;
+		return base_type::deallocate(p, n);
+	}
+
+	const char* get_name() const          { return base_type::get_name(); }
+	void set_name(const char* pName)      { base_type::set_name(pName); }
+
+	static auto getTotalAllocationCount()  { return totalAllocCount; }
+	static auto getTotalAllocationSize()   { return totalAllocatedMemory; }
+	static auto getActiveAllocationSize()  { return activeAllocatedMemory; }
+	static auto getActiveAllocationCount() { return activeAllocCount; }
+	static auto neverUsed()				   { return totalAllocCount == 0; }
+
+	static void resetCount()
+	{
+		activeAllocCount      = 0;
+		totalAllocCount       = 0;
+		totalDeallocCount     = 0;
+		totalCtorCount        = 0;
+		defaultCtorCount      = 0;
+		copyCtorCount         = 0;
+		assignOpCount         = 0;
+		totalAllocatedMemory  = 0;
+		activeAllocatedMemory = 0;
+	}
+
+	virtual ~CountingAllocator() = default;
+
+	static uint64_t activeAllocCount;
+	static uint64_t totalAllocCount;
+	static uint64_t totalDeallocCount;
+	static uint64_t totalCtorCount;
+	static uint64_t defaultCtorCount;
+	static uint64_t copyCtorCount;
+	static uint64_t assignOpCount;
+	static uint64_t totalAllocatedMemory;  // the total amount of memory allocated
+	static uint64_t activeAllocatedMemory; // currently allocated memory by allocator
+};
+
+inline bool operator==(const CountingAllocator& rhs, const CountingAllocator& lhs) { return operator==(CountingAllocator::base_type(rhs), CountingAllocator::base_type(lhs)); }
+inline bool operator!=(const CountingAllocator& rhs, const CountingAllocator& lhs) { return !(rhs == lhs); }
 
 
 
@@ -1255,158 +1378,152 @@ inline bool operator!=(const UnequalAllocator&, const UnequalAllocator&)
 // InstanceAllocator
 //
 // Implements an allocator which has a instance id that makes it different
-// from other InstanceAllocators of a different id. Allocations between 
-// InstanceAllocators of different ids are incompatible. An allocation done 
+// from other InstanceAllocators of a different id. Allocations between
+// InstanceAllocators of different ids are incompatible. An allocation done
 // by an InstanceAllocator of id=0 cannot be freed by an InstanceAllocator
 // of id=1.
 //
 // Example usage:
 //         InstanceAllocator ia0((uint8_t)0);
 //         InstanceAllocator ia1((uint8_t)1);
-// 
+//
 //         eastl::list<int, InstanceAllocator> list0(1, ia0);
 //         eastl::list<int, InstanceAllocator> list1(1, ia1);
-// 
+//
 //         list0 = list1; // list0 cannot free it's current contents with list1's allocator, and InstanceAllocator's purpose is to detect if it mistakenly does so.
-// 
+//
 class InstanceAllocator
 {
 public:
-	enum { kMultiplier = 16 }; // Use 16 because it's the highest currently known platform alignment requirement. 
+	enum
+	{
+		kMultiplier = 16
+	}; // Use 16 because it's the highest currently known platform alignment requirement.
 
-	InstanceAllocator(const char* = NULL, uint8_t instanceId = 0) : mInstanceId(instanceId)
-		{ }
-
-	InstanceAllocator(uint8_t instanceId) : mInstanceId(instanceId)
-		{ }
-
-	InstanceAllocator(const InstanceAllocator& x)
-	  : mInstanceId(x.mInstanceId)
-		{ }
-
-	InstanceAllocator(const InstanceAllocator& x, const char*)
-	  : mInstanceId(x.mInstanceId)
-		{ }
+	InstanceAllocator() : mInstanceId(0) {}
+	explicit InstanceAllocator(const char*, uint8_t instanceId = 0) : mInstanceId(instanceId) {}
+	explicit InstanceAllocator(uint8_t instanceId) : mInstanceId(instanceId) {}
+	InstanceAllocator(const InstanceAllocator& x) : mInstanceId(x.mInstanceId) {}
+	InstanceAllocator(const InstanceAllocator& x, const char*) : mInstanceId(x.mInstanceId) {}
 
 	InstanceAllocator& operator=(const InstanceAllocator& x)
-		{ mInstanceId = x.mInstanceId; return *this; }
+	{
+		mInstanceId = x.mInstanceId;
+		return *this;
+	}
 
 	void* allocate(size_t n, int = 0)
-	{                                                                                        // +1 so that we always have space to write mInstanceId.
-		uint8_t* p8 = static_cast<uint8_t*>(malloc(n + (kMultiplier * (mInstanceId + 1))));  // We make allocations between different instances incompatible by tweaking their return values.
+	{ // +1 so that we always have space to write mInstanceId.
+		uint8_t* p8 =
+		    static_cast<uint8_t*>(malloc(n + (kMultiplier * (mInstanceId + 1)))); // We make allocations between
+		                                                                          // different instances incompatible by
+		                                                                          // tweaking their return values.
 		eastl::fill(p8, p8 + kMultiplier, 0xff);
 		EA_ANALYSIS_ASSUME(p8 != NULL);
 		*p8 = mInstanceId;
-		return p8 + (kMultiplier * (mInstanceId + 1)); 
-	}  
-		
-	void* allocate(size_t n, size_t, size_t, int = 0)
-	{                                                                                        // +1 so that we always have space to write mInstanceId.
-		uint8_t* p8 = static_cast<uint8_t*>(malloc(n + (kMultiplier * (mInstanceId + 1))));  // We make allocations between different instances incompatible by tweaking their return values.
-		eastl::fill(p8, p8 + kMultiplier, 0xff);
-		EA_ANALYSIS_ASSUME(p8 != NULL);
-		*p8 = mInstanceId;
-		return p8 + (kMultiplier * (mInstanceId + 1)); 
-	}  
+		return p8 + (kMultiplier * (mInstanceId + 1));
+	}
 
-	void  deallocate(void* p, size_t /*n*/)
-	{ 
+	void* allocate(size_t n, size_t, size_t, int = 0)
+	{ // +1 so that we always have space to write mInstanceId.
+		uint8_t* p8 =
+		    static_cast<uint8_t*>(malloc(n + (kMultiplier * (mInstanceId + 1)))); // We make allocations between
+		                                                                          // different instances incompatible by
+		                                                                          // tweaking their return values.
+		eastl::fill(p8, p8 + kMultiplier, 0xff);
+		EA_ANALYSIS_ASSUME(p8 != NULL);
+		*p8 = mInstanceId;
+		return p8 + (kMultiplier * (mInstanceId + 1));
+	}
+
+	void deallocate(void* p, size_t /*n*/)
+	{
 		uint8_t* p8 = static_cast<uint8_t*>(p) - (kMultiplier * (mInstanceId + 1));
-		EASTL_ASSERT(*p8 == mInstanceId); // mInstanceId must match the id used in allocate(), otherwise the behavior is undefined (probably a heap assert).
-		if(*p8 == mInstanceId)            // It's possible that *p8 coincidentally matches mInstanceId if p8 is offset into memory we don't control.
+		EASTL_ASSERT(*p8 == mInstanceId); // mInstanceId must match the id used in allocate(), otherwise the behavior is
+		                                  // undefined (probably a heap assert).
+		if (*p8 == mInstanceId) // It's possible that *p8 coincidentally matches mInstanceId if p8 is offset into memory
+		                        // we don't control.
 			free(p8);
 		else
 			++mMismatchCount;
 	}
 
-	const char* get_name()
-		{ sprintf(mName, "InstanceAllocator %u", mInstanceId); return mName; }
+	const char* get_name() const // required to be const because allocators such as fixed_vector_allocator assume that the get_name() member function can be called with a const allocator.
+	{
+		EA::StdC::Snprintf(mName, kNameBufferSize, "InstanceAllocator %u", mInstanceId);
+		return mName;
+	}
 
-	void set_name(const char*)
-		{ }
+	void set_name(const char*) {}
 
-	static void reset_all()
-		{ mMismatchCount = 0; }
+	EA_NODISCARD static bool reset_all()
+	{
+		const bool noMismatches = (mMismatchCount == 0);
+		mMismatchCount = 0;
+		return noMismatches;
+	}
 
 public:
+	const static int kNameBufferSize = 32;
 	uint8_t mInstanceId;
-	char    mName[32];
+	mutable char mName[kNameBufferSize]; // mutable so that we can create the string in get_name()
 
 	static int mMismatchCount;
 };
 
-inline
-bool operator==(const InstanceAllocator& a, const InstanceAllocator& b)
-{
-	return (a.mInstanceId == b.mInstanceId);
-}
-
-inline
-bool operator!=(const InstanceAllocator& a, const InstanceAllocator& b)
-{
-	return (a.mInstanceId != b.mInstanceId);
-}
-
+inline bool operator==(const InstanceAllocator& a, const InstanceAllocator& b) { return (a.mInstanceId == b.mInstanceId); }
+inline bool operator!=(const InstanceAllocator& a, const InstanceAllocator& b) { return (a.mInstanceId != b.mInstanceId); }
 
 
 ///////////////////////////////////////////////////////////////////////////////
 // ThrowingAllocator
 //
-// Implements an EASTL allocator that uses malloc/free as opposed to 
-// new/delete or PPMalloc Malloc/Free. This is useful for testing 
+// Implements an EASTL allocator that uses malloc/free as opposed to
+// new/delete or PPMalloc Malloc/Free. This is useful for testing
 // allocator behaviour of code.
 //
 // Example usage:
 //      vector<int, ThrowingAllocator< false<> > intVector;
-// 
+//
 template <bool initialShouldThrow = true>
 class ThrowingAllocator
 {
 public:
-	ThrowingAllocator(const char* = EASTL_NAME_VAL("ThrowingAllocator")) 
-		: mbShouldThrow(initialShouldThrow) {}
-
-	ThrowingAllocator(const ThrowingAllocator& x) 
-		: mbShouldThrow(x.mbShouldThrow) {}
-
-	ThrowingAllocator(const ThrowingAllocator& x, const char*) 
-		: mbShouldThrow(x.mbShouldThrow) {}
+	ThrowingAllocator(const char* = EASTL_NAME_VAL("ThrowingAllocator")) : mbShouldThrow(initialShouldThrow) {}
+	ThrowingAllocator(const ThrowingAllocator& x) : mbShouldThrow(x.mbShouldThrow) {}
+	ThrowingAllocator(const ThrowingAllocator& x, const char*) : mbShouldThrow(x.mbShouldThrow) {}
 
 	ThrowingAllocator& operator=(const ThrowingAllocator& x)
-		{ mbShouldThrow = x.mbShouldThrow; return *this; }
+	{
+		mbShouldThrow = x.mbShouldThrow;
+		return *this;
+	}
 
 	void* allocate(size_t n, int = 0)
 	{
-		#if EASTL_EXCEPTIONS_ENABLED
-			if(mbShouldThrow)
-				throw std::bad_alloc();
-		#endif
+#if EASTL_EXCEPTIONS_ENABLED
+		if (mbShouldThrow)
+			throw std::bad_alloc();
+#endif
 		return malloc(n);
 	}
 
 	void* allocate(size_t n, size_t, size_t, int = 0)
 	{
-		#if EASTL_EXCEPTIONS_ENABLED
-			if(mbShouldThrow)
-				throw std::bad_alloc();
-		#endif
+#if EASTL_EXCEPTIONS_ENABLED
+		if (mbShouldThrow)
+			throw std::bad_alloc();
+#endif
 		return malloc(n); // We don't support alignment, so you can't use this class where alignment is required.
 	}
 
-	void deallocate(void* p, size_t)
-		{ free(p); }
+	void deallocate(void* p, size_t) { free(p); }
 
-	const char* get_name() const
-		{ return "ThrowingAllocator"; }
+	const char* get_name() const { return "ThrowingAllocator"; }
+	void set_name(const char*) {}
 
-	void set_name(const char*)
-		{ }
-
-	void set_should_throw(bool shouldThrow)
-		{ mbShouldThrow = shouldThrow; }
-
-	bool get_should_throw() const
-		{ return mbShouldThrow; }
+	void set_should_throw(bool shouldThrow) { mbShouldThrow = shouldThrow; }
+	bool get_should_throw() const { return mbShouldThrow; }
 
 protected:
 	bool mbShouldThrow;
@@ -1425,12 +1542,422 @@ inline bool operator!=(const ThrowingAllocator<initialShouldThrow>&, const Throw
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+// Helper utility that does a case insensitive string comparsion with two sets of overloads
+//
+struct TestStrCmpI_2
+{
+	bool operator()(const char* pCStr, const eastl::string& str) const { return str.comparei(pCStr) == 0; }
+	bool operator()(const eastl::string& str, const char* pCStr) const { return str.comparei(pCStr) == 0; }
+};
+
+
+///////////////////////////////////////////////////////////////////////////////
+// StompDetectAllocator
+//
+// An allocator that has sentinal values surrounding its allocator in an
+// effort to detected if its internal memory has been stomped.
+//
+static uint64_t STOMP_MAGIC_V1 = 0x0101DEC1A551F1ED;
+static uint64_t STOMP_MAGIC_V2 = 0x12345C1A551F1ED5;
+
+struct StompDetectAllocator
+{
+	StompDetectAllocator() { Validate(); }
+	~StompDetectAllocator() { Validate(); }
+
+	StompDetectAllocator(const char*) { Validate(); }
+
+	void* allocate(size_t n, int = 0) { return mMallocAllocator.allocate(n); }
+	void* allocate(size_t n, size_t, size_t, int = 0) { return mMallocAllocator.allocate(n); }
+	void deallocate(void* p, size_t n) { mMallocAllocator.deallocate(p, n); }
+
+	const char* get_name() const { return "FatAllocator"; }
+	void set_name(const char*) {}
+
+	void Validate() const
+	{
+		EASTL_ASSERT(mSentinal1 == STOMP_MAGIC_V1);
+		EASTL_ASSERT(mSentinal2 == STOMP_MAGIC_V2);
+	}
+
+	uint64_t mSentinal1 = STOMP_MAGIC_V1;
+	MallocAllocator mMallocAllocator;
+	uint64_t mSentinal2 = STOMP_MAGIC_V2;
+};
+
+inline bool operator==(const StompDetectAllocator& a, const StompDetectAllocator& b)
+{
+	a.Validate();
+	b.Validate();
+
+	return (a.mMallocAllocator == b.mMallocAllocator);
+}
+
+inline bool operator!=(const StompDetectAllocator& a, const StompDetectAllocator& b)
+{
+	a.Validate();
+	b.Validate();
+
+	return (a.mMallocAllocator != b.mMallocAllocator);
+}
+
+
+// Commonly used free-standing functions to test callables
+inline int ReturnVal(int param) { return param; }
+inline int ReturnZero() { return 0; }
+inline int ReturnOne() { return 1; }
+
+
+// ValueInit
+template<class T>
+struct ValueInitOf
+{
+	ValueInitOf() : mV() {}
+	~ValueInitOf() = default;
+
+	ValueInitOf(const ValueInitOf&) = default;
+	ValueInitOf(ValueInitOf&&) = default;
+
+	ValueInitOf& operator=(const ValueInitOf&) = default;
+	ValueInitOf& operator=(ValueInitOf&&) = default;
+
+	T get() { return mV; }
+
+	T mV;
+};
+
+struct NoCopyMove
+{
+	NoCopyMove() = default;
+	NoCopyMove(const NoCopyMove&) = delete;
+	NoCopyMove(NoCopyMove&&) = delete;
+	NoCopyMove& operator=(const NoCopyMove&) = delete;
+	NoCopyMove& operator=(NoCopyMove&&) = delete;
+};
+static_assert(!eastl::is_copy_constructible_v<NoCopyMove>, "!copy constructible");
+static_assert(!eastl::is_copy_assignable_v<NoCopyMove>, "!copy assignable");
+static_assert(!eastl::is_move_constructible_v<NoCopyMove>, "!move constructible");
+static_assert(!eastl::is_move_assignable_v<NoCopyMove>, "!move assignable");
+
+struct NoCopyMoveNonEmpty
+{
+	NoCopyMoveNonEmpty() = default;
+	NoCopyMoveNonEmpty(const NoCopyMoveNonEmpty&) = delete;
+	NoCopyMoveNonEmpty(NoCopyMoveNonEmpty&&) = delete;
+	NoCopyMoveNonEmpty& operator=(const NoCopyMoveNonEmpty&) = delete;
+	NoCopyMoveNonEmpty& operator=(NoCopyMoveNonEmpty&&) = delete;
+
+	int mVal{};
+};
+static_assert(!eastl::is_copy_constructible_v<NoCopyMoveNonEmpty>, "!copy constructible");
+static_assert(!eastl::is_copy_assignable_v<NoCopyMoveNonEmpty>, "!copy assignable");
+static_assert(!eastl::is_move_constructible_v<NoCopyMoveNonEmpty>, "!move constructible");
+static_assert(!eastl::is_move_assignable_v<NoCopyMoveNonEmpty>, "!move assignable");
+static_assert(!eastl::is_empty_v<NoCopyMoveNonEmpty>, "!empty");
+
+// MoveOnlyType - useful for verifying containers that may hold, e.g., unique_ptrs to make sure move ops are implemented
+struct MoveOnlyType
+{
+	MoveOnlyType() = delete;
+	MoveOnlyType(int val) : mVal(val) {}
+	MoveOnlyType(const MoveOnlyType&) = delete;
+	MoveOnlyType(MoveOnlyType&& x) noexcept : mVal(x.mVal) { x.mVal = 0; }
+	MoveOnlyType& operator=(const MoveOnlyType&) = delete;
+	MoveOnlyType& operator=(MoveOnlyType&& x)
+	{
+		mVal = x.mVal;
+		x.mVal = 0;
+		return *this;
+	}
+	bool operator==(const MoveOnlyType& o) const { return mVal == o.mVal; }
+
+	int mVal;
+};
+
+// MoveOnlyTypeDefaultCtor - useful for verifying containers that may hold, e.g., unique_ptrs to make sure move ops are implemented
+struct MoveOnlyTypeDefaultCtor
+{
+	MoveOnlyTypeDefaultCtor() = default;
+	MoveOnlyTypeDefaultCtor(int val) : mVal(val) {}
+	MoveOnlyTypeDefaultCtor(const MoveOnlyTypeDefaultCtor&) = delete;
+	MoveOnlyTypeDefaultCtor(MoveOnlyTypeDefaultCtor&& x) noexcept : mVal(x.mVal) { x.mVal = 0; }
+	MoveOnlyTypeDefaultCtor& operator=(const MoveOnlyTypeDefaultCtor&) = delete;
+	MoveOnlyTypeDefaultCtor& operator=(MoveOnlyTypeDefaultCtor&& x)
+	{
+		mVal = x.mVal;
+		x.mVal = 0;
+		return *this;
+	}
+	bool operator==(const MoveOnlyTypeDefaultCtor& o) const { return mVal == o.mVal; }
+
+	int mVal;
+};
+static_assert(eastl::is_move_constructible_v<MoveOnlyTypeDefaultCtor>, "move constructible");
+static_assert(eastl::is_nothrow_move_constructible_v<MoveOnlyTypeDefaultCtor>, "nothrow move constructible");
+
+struct NonTriviallyCopyable {
+	// non-trivial special members (that is equivalent to the defaults)
+	NonTriviallyCopyable(unsigned int v = 0) noexcept : mValue(v) {}
+	NonTriviallyCopyable(NonTriviallyCopyable&& other) noexcept : mValue(other.mValue) {}
+	NonTriviallyCopyable& operator=(NonTriviallyCopyable&& other) noexcept { mValue = other.mValue; return *this; }
+	NonTriviallyCopyable(const NonTriviallyCopyable& other) noexcept : mValue(other.mValue) {}
+	NonTriviallyCopyable& operator=(const NonTriviallyCopyable& other) noexcept { mValue = other.mValue; return *this; }
+
+	friend bool operator==(const NonTriviallyCopyable& lhs, const NonTriviallyCopyable& rhs) { return lhs.mValue == rhs.mValue; }
+
+public:
+	unsigned int mValue;
+};
+static_assert(eastl::is_default_constructible<NonTriviallyCopyable>::value, "NonTriviallyCopyable");
+static_assert(!eastl::is_trivially_copyable<NonTriviallyCopyable>::value, "NonTriviallyCopyable");
+static_assert(eastl::is_standard_layout<NonTriviallyCopyable>::value, "NonTriviallyCopyable");
+
+struct TriviallyCopyableWithCopy {
+	// non-trivial default ctor
+	TriviallyCopyableWithCopy(unsigned int v = 0) noexcept : mValue(v) {}
+
+	// all eligible (for trivial copyability) copy ctor/move ctor/copy assignment/move assignment are trivial
+	TriviallyCopyableWithCopy(const TriviallyCopyableWithCopy&) = default;
+	TriviallyCopyableWithCopy& operator=(const TriviallyCopyableWithCopy&) = default;
+
+	// remaining copy ctor/move ctor/copy assignment/move assignment are deleted
+	TriviallyCopyableWithCopy(TriviallyCopyableWithCopy&&) = delete;
+	TriviallyCopyableWithCopy& operator=(TriviallyCopyableWithCopy&&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithCopy& lhs, const TriviallyCopyableWithCopy& rhs) { return lhs.mValue == rhs.mValue; }
+
+public:
+	unsigned int mValue;
+
+	// intentionally not a standard-layout class:
+	// standard-layout requires all non-static data members have the same access control.
+private:
+	char ch{ 'C' };
+};
+static_assert(eastl::is_default_constructible<TriviallyCopyableWithCopy>::value, "TriviallyCopyableWithCopy");
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithCopy>::value, "TriviallyCopyableWithCopy");
+static_assert(!eastl::is_standard_layout<TriviallyCopyableWithCopy>::value, "TriviallyCopyableWithCopy");
+static_assert(!eastl::is_move_constructible_v<TriviallyCopyableWithCopy>, "TriviallyCopyableWithCopy");
+
+struct TriviallyCopyableWithMove {
+	// non-trivial default ctor
+	TriviallyCopyableWithMove(unsigned int v = 0) noexcept : mValue(v) {}
+
+	// all eligible (for trivial copyability) copy ctor/move ctor/copy assignment/move assignment are trivial
+	TriviallyCopyableWithMove(TriviallyCopyableWithMove&&) = default;
+	TriviallyCopyableWithMove& operator=(TriviallyCopyableWithMove&&) = default;
+
+	// remaining copy ctor/move ctor/copy assignment/move assignment are deleted
+	TriviallyCopyableWithMove(const TriviallyCopyableWithMove&) = delete;
+	TriviallyCopyableWithMove& operator=(const TriviallyCopyableWithMove&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithMove& lhs, const TriviallyCopyableWithMove& rhs) { return lhs.mValue == rhs.mValue; }
+
+public:
+	unsigned int mValue;
+
+	// intentionally not a standard-layout class:
+	// standard-layout requires all non-static data members have the same access control.
+private:
+	char ch{ 'C' };
+};
+static_assert(eastl::is_default_constructible<TriviallyCopyableWithMove>::value, "TriviallyCopyableWithMove");
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithMove>::value, "TriviallyCopyableWithMove");
+static_assert(!eastl::is_standard_layout<TriviallyCopyableWithMove>::value, "TriviallyCopyableWithMove");
+
+struct TriviallyCopyableWithCopyCtor {
+	TriviallyCopyableWithCopyCtor(unsigned int v) noexcept : mValue(v) {}
+
+	TriviallyCopyableWithCopyCtor(const TriviallyCopyableWithCopyCtor&) = default;
+
+	TriviallyCopyableWithCopyCtor() = delete;
+	TriviallyCopyableWithCopyCtor(TriviallyCopyableWithCopyCtor&&) = delete;
+	TriviallyCopyableWithCopyCtor& operator=(const TriviallyCopyableWithCopyCtor&) = delete;
+	TriviallyCopyableWithCopyCtor& operator=(TriviallyCopyableWithCopyCtor&&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithCopyCtor& lhs, const TriviallyCopyableWithCopyCtor& rhs) { return lhs.mValue == rhs.mValue; }
+
+	unsigned int mValue;
+};
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithCopyCtor>::value, "TriviallyCopyableWithCopyCtor");
+static_assert(eastl::is_standard_layout<TriviallyCopyableWithCopyCtor>::value, "TriviallyCopyableWithCopyCtor");
+static_assert(eastl::is_trivially_copy_constructible<TriviallyCopyableWithCopyCtor>::value, "TriviallyCopyableWithCopyCtor");
+
+struct TriviallyCopyableWithCopyAssign {
+	TriviallyCopyableWithCopyAssign(unsigned int v) noexcept : mValue(v) {}
+
+	TriviallyCopyableWithCopyAssign& operator=(const TriviallyCopyableWithCopyAssign&) = default;
+
+	TriviallyCopyableWithCopyAssign() = delete;
+	TriviallyCopyableWithCopyAssign(const TriviallyCopyableWithCopyAssign&) = delete;
+	TriviallyCopyableWithCopyAssign(TriviallyCopyableWithCopyAssign&&) = delete;
+	TriviallyCopyableWithCopyAssign& operator=(TriviallyCopyableWithCopyAssign&&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithCopyAssign& lhs, const TriviallyCopyableWithCopyAssign& rhs) { return lhs.mValue == rhs.mValue; }
+
+	unsigned int mValue;
+};
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithCopyAssign>::value, "TriviallyCopyableWithCopyAssign");
+static_assert(eastl::is_standard_layout<TriviallyCopyableWithCopyAssign>::value, "TriviallyCopyableWithCopyAssign");
+static_assert(eastl::is_trivially_copy_assignable<TriviallyCopyableWithCopyAssign>::value, "TriviallyCopyableWithCopyAssign");
+
+struct TriviallyCopyableWithMoveCtor {
+	TriviallyCopyableWithMoveCtor(unsigned int v) noexcept : mValue(v) {}
+
+	TriviallyCopyableWithMoveCtor(TriviallyCopyableWithMoveCtor&&) = default;
+
+	TriviallyCopyableWithMoveCtor() = delete;
+	TriviallyCopyableWithMoveCtor(const TriviallyCopyableWithMoveCtor&) = delete;
+	TriviallyCopyableWithMoveCtor& operator=(const TriviallyCopyableWithMoveCtor&) = delete;
+	TriviallyCopyableWithMoveCtor& operator=(TriviallyCopyableWithMoveCtor&&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithMoveCtor& lhs, const TriviallyCopyableWithMoveCtor& rhs) { return lhs.mValue == rhs.mValue; }
+
+	unsigned int mValue;
+};
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithMoveCtor>::value, "TriviallyCopyableWithMoveCtor");
+static_assert(eastl::is_standard_layout<TriviallyCopyableWithMoveCtor>::value, "TriviallyCopyableWithMoveCtor");
+static_assert(eastl::is_trivially_move_constructible<TriviallyCopyableWithMoveCtor>::value, "TriviallyCopyableWithMoveCtor");
+static_assert(eastl::is_nothrow_move_constructible<TriviallyCopyableWithMoveCtor>::value, "TriviallyCopyableWithMoveCtor");
+
+struct TriviallyCopyableWithMoveAssign {
+	TriviallyCopyableWithMoveAssign(unsigned int v) noexcept : mValue(v) {}
+
+	TriviallyCopyableWithMoveAssign& operator=(TriviallyCopyableWithMoveAssign&&) = default;
+
+	TriviallyCopyableWithMoveAssign() = delete;
+	TriviallyCopyableWithMoveAssign(const TriviallyCopyableWithMoveAssign&) = delete;
+	TriviallyCopyableWithMoveAssign(TriviallyCopyableWithMoveAssign&&) = delete;
+	TriviallyCopyableWithMoveAssign& operator=(const TriviallyCopyableWithMoveAssign&) = delete;
+
+	friend bool operator==(const TriviallyCopyableWithMoveAssign& lhs, const TriviallyCopyableWithMoveAssign& rhs) { return lhs.mValue == rhs.mValue; }
+
+	unsigned int mValue;
+};
+static_assert(eastl::is_trivially_copyable<TriviallyCopyableWithMoveAssign>::value, "TriviallyCopyableWithMoveAssign");
+static_assert(eastl::is_standard_layout<TriviallyCopyableWithMoveAssign>::value, "TriviallyCopyableWithMoveAssign");
+static_assert(eastl::is_trivially_move_assignable<TriviallyCopyableWithMoveAssign>::value, "TriviallyCopyableWithMoveAssign");
+
+// useful for testing empty base optimization of types
+struct NoDataMembers {};
+static_assert(eastl::is_empty<NoDataMembers>::value, "empty");
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Utility RAII class that sets a new default allocator for the scope
+//
+struct AutoDefaultAllocator
+{
+	eastl::allocator* mPrevAllocator = nullptr;
+
+	AutoDefaultAllocator(eastl::allocator* nextAllocator) { mPrevAllocator = SetDefaultAllocator(nextAllocator); }
+	~AutoDefaultAllocator()                               { SetDefaultAllocator(mPrevAllocator); }
+};
+
+//////////////////////////////////////////////////////////////////////////////
+// Define string types for heterogenous lookup.
+// 
+// ExplicitString is to be used where we don't want any implicitly conversions to be available for the type.
+// This is relevant when calling container heterogenous lookup functions that we want to guarantee that there is no implicit conversion to the container key type.
+//
+// Note: less<void> is a transparent comparison type, less<ExplicitString> is not.
+
+struct ExplicitString {
+	static unsigned int sCtorFromStrCount;
+
+	eastl::string mString;
+
+	ExplicitString() = default;
+
+	explicit ExplicitString(const char* str)
+		: mString(str)
+	{
+		++sCtorFromStrCount;
+	}
+
+	struct Additional {};
+
+	ExplicitString(Additional, const char* str)
+		: mString(str) {}
+
+	// to be called in test setup code where we don't want to count towards sCtorFromStrCount.
+	static ExplicitString Create(const char* str)
+	{
+		return ExplicitString{ Additional{}, str };
+	}
+
+	static void Reset()
+	{
+		sCtorFromStrCount = 0;
+	}
+};
+
+inline bool operator <(const ExplicitString& lhs, const ExplicitString& rhs) { return lhs.mString < rhs.mString; }
+inline bool operator <(const ExplicitString& lhs, const char* rhs) { return lhs.mString < rhs; }
+inline bool operator <(const char* lhs, const ExplicitString& rhs) { return lhs < rhs.mString; }
+
+inline bool operator ==(const ExplicitString& lhs, const ExplicitString& rhs) { return lhs.mString == rhs.mString; }
+inline bool operator ==(const ExplicitString& lhs, const char* rhs) { return lhs.mString == rhs; }
+inline bool operator ==(const char* lhs, const ExplicitString& rhs) { return lhs == rhs.mString; }
+
+struct ExplicitStringHash {
+	typedef int is_transparent;
+
+	size_t operator()(const ExplicitString& str) const
+	{
+		return eastl::hash<char*>{}(str.mString.c_str());
+	}
+
+	size_t operator()(const char* p) const
+	{
+		return eastl::hash<char*>{}(p);
+	}
+};
+
+namespace detail
+{
+
+	template <class, class = void>
+	struct is_fixed_container : public eastl::false_type
+	{
+	};
+
+	template <class Container>
+	struct is_fixed_container<
+	    Container,
+	    eastl::void_t<decltype(bool(Container::can_overflow())),
+	                  decltype(eastl::declval<Container>().get_allocator().get_overflow_allocator())>>
+	    : public eastl::true_type
+	{
+	};
+
+	template <class Container>
+	constexpr bool is_fixed_container_v = is_fixed_container<Container>::value;
+
+} // namespace detail
+
+// Only needed because fixed containers essentially leak their implementation details into the public interface.
+//
+// Ideally fixed containers should be an allocator-aware container only if overflow is enabled. Specifically,
+// allocator_type, Container::get_allocator(), constructors with a allocator parameter and all other functionality that
+// expose an allocator should only exist if overflow is enabled. The fixed allocator types (eg. fixed_vector_allocator)
+// are an implementation detail and shouldn't be part of the public interface. Instead, Container::allocator_type should
+// be the user specified overflow allocator and Container::get_allocator() should return this allocator, not the fixed
+// allocator. This function essentially implements this design fix for Container::get_allocator() as a non-member
+// function.
+template <typename Container, eastl::enable_if_t<!detail::is_fixed_container_v<Container>, bool> = true>
+auto get_allocator(const Container& c)
+{
+	return c.get_allocator();
+}
+
+template <typename Container, eastl::enable_if_t<detail::is_fixed_container_v<Container>, bool> = true>
+auto get_allocator(const Container& c)
+{
+	// fixed containers without overflow don't have a meaningful allocator, ie. treat them as a non-allocator aware container.
+	static_assert(Container::can_overflow());
+	return c.get_allocator().get_overflow_allocator();
+}
 
 #endif // Header include guard
-
-
-
-
-
-
-

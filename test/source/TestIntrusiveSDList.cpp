@@ -39,15 +39,17 @@ namespace TestSDListLocal
 	typedef intrusive_sdlist<IntNode> IntrusiveSDList;
 
 	template <class T>
-	eastl::string8 IntListToString8(const T& cont)
+	eastl::string IntListToString8(const T& cont)
 	{
-		eastl::string8 s("<");
-		char8_t        buf[64];
+		eastl::string s("<");
+
+		const int kBufferSize = 64;
+		char buf[kBufferSize];
 
 		for(typename T::const_iterator it(cont.begin()), itEnd(cont.end()); it != itEnd; ++it)
 		{
 			const int& v = *it;
-			sprintf(buf, " %d", v);
+			EA::StdC::Snprintf(buf, kBufferSize, " %d", v);
 			s += buf;
 		}
 
@@ -148,8 +150,6 @@ template class eastl::intrusive_sdlist<TestSDListLocal::IntNode>;
 
 int TestIntrusiveSDList()
 {
-	EASTLTest_Printf("TestIntrusiveSDList\n");
-
 	using namespace TestSDListLocal;
 
 	int nErrorCount = 0;
